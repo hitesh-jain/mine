@@ -1,0 +1,7 @@
+name = Salesforce Custom fileds Mapping
+description = This module is used to map custom fields to SFDC.
+
+version = "7.x-0.1"
+core = 7.x
+package = CHSI
+project = CignaTTK

@@ -1,0 +1,92 @@
+.reveal-modal-bg {
+	position: fixed;
+	height: 100%;
+	width: 100%;
+	background: #000;
+	background: rgba(0, 0, 0, .8);
+	z-index: 100;
+	display: none;
+	top: 0;
+	left: 0;
+}
+#myModal1 h1 {
+    border-bottom: 1px solid #999999;
+    clear: both;
+    font-size: 16px;
+    margin:0px;
+    padding-bottom: 5px;
+    width: 100%;
+}
+#myModal1 {
+	left: 66%;
+	padding: 10px;
+	top: 30px !important;
+	width:200px;
+}
+#myModal1 ul {
+	margin:0px;
+	padding:0px;
+}
+#myModal1 ul li {
+	list-style:none;
+}
+#myModal1 ul li a {
+	background: url("../images/lisst.jpg") no-repeat scroll left center transparent;
+	display: block;
+	filter: none;
+	font-size: 11px;
+	line-height: 120%;
+	margin-left: 11px;
+	padding-bottom: 6px;
+	padding-left: 10px;
+	padding-top: 6px;
+	width: 150px;
+	text-decoration:none;
+}
+#myModal1 ul li a span{ padding-left:5px;}
+#myModal1 ul li a:hover {
+	background: #e7e7e7;
+}
+.reveal-modal {
+	visibility: hidden;
+	top: 100px !important;
+	left: 50%;
+	margin-left: -300px;
+	width: 520px;
+	background: #fff;
+	position:  fixed;
+	z-index: 101;
+	padding: 30px 40px 34px;
+	border:5px solid #666;
+}
+.reveal-modal.small {
+	width: 200px;
+	margin-left: -140px;
+}
+.reveal-modal.medium {
+	width: 400px;
+	margin-left: -240px;
+}
+.reveal-modal.large {
+	width: 600px;
+	margin-left: -340px;
+}
+.reveal-modal.xlarge {
+	width: 800px;
+	margin-left: -440px;
+}
+.reveal-modal .close-reveal-modal {
+	font-size: 22px;
+	line-height: .5;
+	position: absolute;
+	top: 8px;
+	right: 11px;
+	color: #aaa;
+	text-shadow: 0 -1px 1px rbga(0, 0, 0, .6);
+	font-weight: bold;
+	cursor: pointer;
+	background:url(../images/closed.png) no-repeat left top;
+	width:17px;
+	height:17px;
+	text-decoration:none;
+} 

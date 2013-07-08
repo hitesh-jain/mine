@@ -1,0 +1,54 @@
+<?php
+
+/**
+ * Implements hook_init
+ * 
+ */
+
+function custom_download_init(){
+    
+
+    
+}
+/**
+ * Implements hook_permission
+ * 
+ */
+function custom_download_permission(){
+    
+    return array(
+        'show access denied' =>  array(
+            'title' => t('Show Access Denied'),
+         ),
+         'show not found' =>  array(
+            'title' => t('Show Not Found'),
+         ),
+    );
+}
+/**
+ * Implements hook_menu
+ * 
+ */
+function custom_download_menu(){
+    
+	 $items['downloads'] = array(
+      'page callback' => '_custom_download',
+	  'access callback' => TRUE,
+	  'title'=> 'Claim Forms',
+      'type' => MENU_CALLBACK,
+	  //'page arguments' => array(),
+    );   
+}
+
+
+/**
+ * This function can be called directly or can be called from menu.
+ */
+function _custom_download() {
+	global $form;
+	return theme("custom_download");
+}
+
+
+
+

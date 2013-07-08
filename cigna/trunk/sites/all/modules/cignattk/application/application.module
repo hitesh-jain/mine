@@ -1,0 +1,4112 @@
+<?php
+
+/**
+ * Implements Hook_Menu 
+ *
+ */
+ function application_init(){
+    
+}
+ 
+function application_menu(){
+    
+    $items = array();
+    $items['application_details'] = array(
+        'title' => 'Details of the proposer',
+        'page callback'=>'drupal_get_form',
+        'page arguments' => array('application_details_form'),
+        'access callback' => TRUE,
+        'type' => MENU_CALLBACK,
+    );
+    $items['complete/application']=array(
+    
+        'page callback'=>'drupal_get_form',
+        'page arguments'=>array('complete_application_methods'),
+        'access callback'=>TRUE,
+        'type' => MENU_CALLBACK,
+    );
+    $items['application/%/proposer']=array(
+        'page callback'=>'drupal_get_form',
+        'page arguments'=>array('application_level_form',1),
+        'access callback'=>TRUE,
+        'type' => MENU_CALLBACK,
+    );
+     $items['application/%/insured/%']=array(
+        'page callback'=>'drupal_get_form',
+        'page arguments'=>array('insured_level_form',1,3),
+        'access callback'=>TRUE,
+        'type' => MENU_CALLBACK,
+    );
+    $items['application/%/confirmation'] = array(
+        'title' => 'Confirmation of details entered',
+        'page callback' => 'application_confirmation',
+        'access callback' => TRUE,
+        'page arguments' => array(1),
+    );
+    $items['application/payment/%'] = array(
+        'title' => 'Payment Options',
+        'page callback'=>'drupal_get_form',
+        'page arguments'=>array('billdesk_payment_form',2),
+        'access callback' => TRUE,
+    );
+    $items['payment/confirm'] = array(
+        'page callback' => 'payment_response',
+        'access callback' => TRUE
+    );
+    $items['custom/mapping'] = array(
+        'title' => 'Custom Mapping',
+        'page callback' => 'custom_mapping',
+        'access callback' => TRUE
+    );
+    $items['application/payment/save/quote'] = array(
+        'page callback' => '_application_payment_save_quote',
+        'access callback' => TRUE,
+        'type' => MENU_CALLBACK,
+    );
+    return $items;
+}
+
+function _application_payment_save_quote(){
+    
+    $values=$_POST;
+    
+    exit;
+}
+
+function billdesk_payment_form($form,$form_state){
+    
+    global $base_url,$theme,$product_conf;
+    $arg = arg();
+    $applin_no= $arg[2];
+    
+    $final_amount = db_select('applications','a');
+    $final_amount->innerJoin('get_quote','q','q.qid=a.quote_id');
+    $final_amount->fields('q')
+                ->condition('a.app_id',$applin_no);
+                        
+    $result=$final_amount->execute()->fetchAssoc();
+    
+    if(empty($result['final_quote_no'])){
+        
+        $quote_details=_plan_insured_total_premium($result['qid'],$applin_no,1);
+        try{
+           $response_service=$product_conf->getQuote('compute',$quote_details);
+        }catch(Exception $e){
+            return 'Service Not available';
+        }    
+        if($response_service){
+            
+            db_update('get_quote')
+                ->fields(array(
+                    'final_quote_no'=>$response_service->return->listofquotationTO->quoteId,
+                    'saveFl'=>'YES',
+                ))
+                ->condition('qid',$result['qid'])
+              ->execute();  
+        }   
+    } 
+    
+    if(!empty($result['finalpremium'])){
+    
+         $finalPremium=$result['finalpremium'];
+    }else{
+        $finalPremium=$result['total_premium'];
+    }
+    
+    $eff_from_date=date('Y-m-d');
+
+    $valid_days=(((int)($result['tenure'])) * 365)-1;
+    $valid_end_date = date('Y-m-d',strtotime($eff_from_date . " + ".$valid_days." day"));
+                
+    if($applin_no){
+    $result=db_query('SELECT * FROM policynumbers WHERE is_assign = 0 ORDER BY policy_no LIMIT 0, 1');
+                $policy_details = $result->fetchAssoc();
+                
+                if($policy_details){
+                    $rsult = db_update('policynumbers')
+                        ->fields(array(
+                            'is_assign' => 1
+                        ))
+                        ->condition('plid',$policy_details['plid'])
+                        ->execute();
+                }
+                $result = db_update('applications')
+                        ->fields(array(
+                            'application_no' => get_app_code($applin_no),
+                            'policy_no'    => $policy_details['policy_no'],
+                            //'policy_start_date' => $eff_from_date,
+                            //'policy_end_date' => $valid_end_date,
+                            //'status' => 'completed'
+                        ))
+                        ->condition('app_id',$applin_no,'=')
+                        ->execute();
+                
+     }          
+    if($applin_no){
+        $pay_id = db_insert('payment_details')
+                ->fields(array(
+                  'application_id' => $applin_no,
+                  'policy_no' => $policy_details['policy_no'],
+                  'transaction_amount' =>$finalPremium,
+                  'original_status' => 'pending'
+                ))
+            ->execute();
+    }
+    // Bill Desk.
+    $merchantId = 'CIGNATTK';
+    $customerId = $policy_details['policy_no'];
+    $txnAmount = '2.00';
+    $currencyType = 'INR';
+    $typeField1 = 'R';
+    $securityId = 'cignattk';
+    $typeField2 = 'F';
+    $returnUrl = $base_url.'/payment/confirm';
+    $checksum_key="M6O6pl76iyxp";
+    
+    $msg_without_checksum_key =$merchantId."|".$customerId."|NA|".$txnAmount."|NA|NA|NA|INR|NA|R|".$securityId."|NA|NA|F|".$applin_no."|NA|NA|NA|NA|NA|NA|".$returnUrl;
+    $calculate_checksum_for_this_string=$msg_without_checksum_key."|".$checksum_key;
+    $checksum = hash('sha256',$calculate_checksum_for_this_string);
+    $final_checksum = strtoupper($checksum);
+    $msg_without_checksum_key1 = $msg_without_checksum_key."|".$final_checksum;
+    
+    $form['html'] = array(
+        '#type' => 'markup',
+        '#markup' => '<div class="paymentpage">
+                      <div class="cardtitle">
+                        <h2>You may pay your premium amount using any of the following methods</h2>
+                      </div>
+                      <div class="detailslist">
+                        <article>
+                          <div id="v-nav">
+                            <ul>
+                              <li tab="tab1" class="first current">Credit Card</li>
+                              <li tab="tab2" class="">Credit Card with EMI</li>
+                              <li tab="tab3" class="">Net Banking</li>
+                              <li tab="tab4" class="">Debit Card</li>
+                              <li tab="tab4" class="last">Cheque/Demand Draft</li>
+                            </ul>
+                            <div class="tab-content" style="display: block;">
+                              <h4>Amount Payable</h4>
+                              <div class="rupesdetails"><img src="'.url(drupal_get_path('theme',$theme)).'/images/rupes_sing.png" width="12" height="15" alt="" style="margin-top:-5px;">&nbsp;'.number_format($finalPremium).'</div>
+                            </div>
+                            <div class="tab-content" style="display: none;">
+                              <h4>Credit Card with EMI Details</h4>
+                            </div>
+                            <div class="tab-content" style="display: none;">
+                              <h4>Net Banking Details </h4>
+                              <h5></h5>
+                            </div>
+                            <div class="tab-content" style="display: none;">
+                              <h4>Debit Card Details</h4>
+                            </div>
+                            <div class="tab-content" style="display: none;">
+                              <h4>Cheque/Demand Draft Details</h4>
+                            </div>
+                          </div>
+                        </article>
+                      </div>
+                      <div class="sidebar">
+                        <aside>
+                          <h3>ON SUCCESSFUL PAYMENT</h3>
+                          <p>YOU WILL RECEIVE THE<br />
+                            FOLLOWING</p>
+                          <ul>
+                            <li>PREMIUM PAID RECEIPT</li>
+                            <li>ONLINE ACCESS TO MANAGE<br/>
+                              THE POLICY</li>
+                          </ul>
+                        </aside>
+                      </div>
+                    </div>',
+        );
+    $form['msg'] = array(
+        '#type' => 'hidden',
+        '#default_value' => $msg_without_checksum_key1,
+    );
+    $form['submit'] = array(
+          '#type' => 'submit',
+          '#tree' => TRUE,
+          '#value' => t('Make Payment'),
+          '#prefix' => '<div class="footerproceedlink">
+                          <div class="proceedleftlink">
+                            <ul>
+                              <li class="first"><a href="'.url('application/'.$applin_no.'/confirmation').'">< Back</a></li>
+                              <li class="last"><a href="#">Continue Later</a></li>
+                            </ul>
+                          </div>
+                          <div class="proceedrightlink">',
+          '#suffix' => '</div>',
+    );
+    
+    /*$form['submit'] = array(
+        '#type' => 'submit',
+        '#value' => t('Make Payment'),
+    );*/
+    $form['#action'] = 'https://www.billdesk.com/pgidsk/PGIMerchantPayment';
+    return $form;
+    
+}
+function payment_details(){
+    return theme('payment_details');
+}
+function custom_mapping(){
+    //mappingLead();
+    //mappingOpprtunity();
+}
+function payment_response(){
+    global $sforce;
+    $checksum_key="M6O6pl76iyxp";
+    if(empty($_POST['msg'])){
+        drupal_set_message(t('Somthing wrong with payment process please re-check.'));
+    }
+    if(!empty($_POST['msg'])){
+        
+        $string = $_POST['msg'];
+        $responce_data = explode('|',$string);
+        $return_checksum_value= $responce_data['25'];
+        $checksum_value = array_pop($responce_data);
+        $without_checksum_key = implode('|',$responce_data);
+        $without_checksum_key= $without_checksum_key.'|'.$checksum_key;
+        $web_checksum = hash('sha256',$without_checksum_key);
+        $final_web_checksum = strtoupper($web_checksum);
+        $appln_id= $responce_data['16'];
+        if($final_web_checksum != $checksum_value ){
+            $stus = 'Transaction Rejected';
+            //drupal_set_message(t('Transaction is rejected for application Id: %id.', array('%id' => $appln_id)));
+        }else{
+            $stus = 'Successful Transaction';
+            //drupal_set_message(t('Transaction is successfull for your application Id: %id.', array('%id' => $appln_id)));
+        }
+        // store billdesk respoce details
+        $bid = db_insert('billdesk_responce')
+                ->fields(array(
+                    'TxnReferenceNo' => $responce_data['2'],
+                    'appl_id' => $appln_id,
+                    'responce' => $string,
+                    'web_checksum' => $final_web_checksum,
+                ))
+                ->execute();
+        $message = $responce_data['24'];
+        if($responce_data['14'] == '0300'){
+            $status_msg = 'Successful Transaction';
+            $result = db_update('applications')
+                        ->fields(array(
+                            'policy_start_date' => $eff_from_date,
+                            'policy_end_date' => $valid_end_date,
+                            'status' => 'completed'
+                        ))
+                        ->condition('app_id',$appln_id,'=')
+                        ->execute();
+        }
+        
+        $sf_opp_id = db_select('applications','a')
+                    ->fields('a',array('sf_id'))
+                    ->condition('app_id',$appln_id)
+                    ->execute()
+                    ->fetchField();
+        //echo $sf_opp_id.'<br>';
+        db_update('payment_details')
+                ->fields(array(
+                  'transaction_id' => $responce_data['2'],
+                  'transaction_mode' => 'IVR',
+                  'payment_mode' => 'CREDITCARD',
+                  'transaction_amount' =>$responce_data['4'],
+                  'transaction_date' => strtotime($responce_data['13']),
+                  'status' => (isset($status_msg) ? $status_msg : $message),
+                  'hidRequestId' => $_POST['hidRequestId'],
+                  'hidOperation' => $_POST['hidOperation']
+                  
+                ))
+                ->condition('application_id',$appln_id)
+                ->condition('policy_no',$responce_data['1'])
+                ->execute();
+            
+            
+    if($sf_opp_id){
+        //insert payment details
+        $payment_data = array(
+            'cgn_Payment_Mode__c'=>'CREDITCARD',
+            'cgn_Bank_Code__c' => $responce_data['5'],
+            'cgn_Bank_Branch__c' =>  $responce_data['6'],               
+            'cgn_Instrument_Amount__c'=>$responce_data['4'],
+            'cgn_Instrument_Date__c'=>date('Y-m-d',strtotime($responce_data['13'])),
+            'cgn_Transaction_Number__c'=>$responce_data['2'],
+            'cgn_Mode_of_Transaction__c'=>'IVR',
+        );
+        $sf_pay_result = $sforce->updateSforceLead($payment_data,'Opportunity',$sf_opp_id);
+        //echo $sf_pay_id;die;
+        if(sfdcErrors($sf_pay_result,'Opportunity')){
+            db_update('payment_details')
+            ->fields(array(
+                'sf_pay_id' =>$sf_pay_result->id, 
+            ))
+            ->condition('application_id',$appln_id)
+            ->condition('policy_no',$responce_data['1'])
+            ->execute(); 
+            }
+        } 
+    }
+    //return theme('payment_response_details');
+    if($responce_data['14'] == '0300'){    
+        return theme('payment_response_details',array('amount'=>$responce_data['4']));
+    }else{
+        return theme('payment_fail_response',array('app_id' => $appln_id));
+    }  
+}
+
+function insured_level_form($form,&$form_state,$app_id,$insured_id){
+    
+    
+    global $base_url;
+    drupal_add_js(drupal_get_path('module','application').'/js/application.js');
+        
+    $result=db_select('insured_data','i')
+            ->fields('i')
+            ->condition('i.application_id',$app_id)
+            ->condition('i.ordering',$insured_id)
+            ->execute()->fetchAssoc();
+            
+    //dpr($result['people_type']);exit;
+        
+    if(isset($result) && !empty($result)){
+     
+        if(!empty($result['height'])){
+            
+            $conversion=conversion_cms_to_feet_and_inches($result['height']);
+            $feet=$conversion['feet'];
+            $inches=$conversion['inches'];   
+        }
+        /* 
+        if((isset($result['day']) &&  isset($result['month'])  && isset($result['year']) ) && (!empty($result['day']) && !empty($result['month']) && !empty($result['year']) )){
+            
+                $year=$result['year'];   
+                $day=$result['day'];
+                $month=$result['month'];
+        }
+        else{
+            $year=date('Y');
+            $month=date('n');
+            $day=date('j');
+        }*/
+        
+        $people_type=$result['people_type'];
+        $ordering=$result['sub_ordering'];
+        $tobacco=empty($result['tobacco']) ? 0 : $result['tobacco'];
+        $alcohol=empty($result['alcohol']) ? 0 : $result['alcohol'];
+        $cigarette=empty($result['cigarette']) ? 0 : $result['cigarette'];
+        
+        
+        $tobacco_consumption=empty($result['tobacco_consumption']) ? 1 : $result['tobacco_consumption'];
+        $alcohol_consumption=empty($result['alcohol_consumption']) ? 1 : $result['alcohol_consumption'];
+        $cigarette_consumption=empty($result['cigarette_consumption']) ? 1 : $result['cigarette_consumption'];
+        
+                
+        if(!empty($result['dob'])){
+                        
+            $year=(int)(date('Y',$result['dob']));
+            $month=(int)(date('n',$result['dob']));
+            $day=(int)(date('j',$result['dob']));
+        }
+        if(!is_null($result['gender'])){
+            $gender=$result['gender'];
+        }       
+    }       
+            
+    $form['head_title']=array(
+        '#markup'=>'<h2>'.ucfirst($people_type).'&nbsp;'.$ordering.'&nbsp;&nbsp;being insured is</h2>',
+    );    
+    
+    if($people_type=='adult'){
+        
+        $form['relationship']=array(
+        '#type'=>'radios',
+        '#options'=>array(
+            'Wife'=>'Wife',
+            'Spouse'=>'Spouse',
+            'Brother'=>'Brother',
+            'Sister'=>'Sister',
+            'Father'=>'Father',
+            'Mother'=>'Mother',
+        ),
+            '#default_value'=>isset($result['relationship']) ? $result['relationship'] :'Wife',
+        );   
+        
+    }else if($people_type=='child'){
+        
+        $form['relationship']=array(
+        '#type'=>'radios',
+        '#options'=>array(
+            'Son'=>'Son',
+            'Daughter'=>'Daughter',
+            'Brother'=>'Brother',
+            'Sister'=>'Sister',
+        ),
+            '#default_value'=>isset($result['relationship']) ? $result['relationship'] :'Son',
+        );
+        
+    }
+      $feet_options=array(
+        "0"=>"Feet",
+        "1"=>"1ft",
+        "2"=>"2ft",
+        "3"=>"3ft",
+        "4"=>"4ft",
+        "5"=>"5ft",
+        "6"=>"6ft",
+        "7"=>"7ft",
+        "8"=>"8ft",
+        "9"=>"9ft",
+    );
+    $inch_options=array(
+        "None"=>"Inches",
+        "0"=>"0",
+        "1"=>"1",
+        "2"=>"2",
+        "3"=>"3",
+        "4"=>"4",
+        "5"=>"5",
+        "6"=>"6",
+        "7"=>"7",
+        "8"=>"8",
+        "9"=>"9",
+        "10"=>"10",
+        "11"=>"11",
+        "12"=>"12",
+    );
+    $form['height_title']=array(
+		'#markup'=>'<div class="selflist"><div class="datafirstslide"><div class="leftdata"><h4>Enter your height and weight</h4></div> <div class="formdata">',
+    ); 
+     $form['height_title2']=array(
+		'#markup'=>'<label>HEIGHT</label>',
+    );
+    $form['insured_height_feet']=array(
+    
+        '#type'=>'select',	
+        '#options'=>$feet_options,
+        '#prefix'=>'<div class="height_weight_details">',
+        '#default_value'=>isset($feet) ? $feet : '0',
+		'#suffix'=>'',
+    );
+    $form['insured_height_inches']=array(
+        '#type'=>'select',
+        '#options'=>$inch_options,
+        '#default_value'=>isset($inches) ? $inches : 'None',
+
+    );
+	$form['height_title3']=array(
+		'#markup'=>'<label style="padding-left: 15px;">WEIGHT</label>',
+    );
+	/*$form['weight']=array(
+        '#type'=>'select',
+        '#options'=>$weight_options,
+        '#default_value'=>isset($weight) ? $weight : 'None',
+		'#suffix'=>'</div></div></div>',
+    );*/
+    $form['insured_weight']=array(
+    
+        '#type'=>'textfield',
+        '#size'=>5,
+        '#field_suffix'=>'Kgs',
+        //'#field_prefix'=>'WEIGHT',
+        '#suffix'=>'</div></div></div>',
+        '#required'=>TRUE,
+        '#default_value'=>isset($result['weight']) && !empty($result['weight']) ? $result['weight'] : '', 
+    );
+	$form["markresponse"]=array(
+        '#type'=>'radios',
+        '#title'=>t('Mark all responses as'),
+        '#options'=>array(
+                    0=>'No',
+                    1=>'Yes',
+        ),
+		'#prefix'=>'<div class="datafirstslidefull"><div class="leftdata"><h4>HEALTH AND LIFESTYLE</h4></div><div class="formdata">',
+		'#suffix'=>'</div></div>',
+    );
+    
+    $form['app_id']=array(
+    
+        '#type'=>'hidden',
+        '#value'=>$app_id,
+    );
+    $form['insured']=array(
+        '#type'=>'hidden',
+        '#value'=>$insured_id,
+    );
+    
+    $form['title'] = array(
+        '#type' => 'select',
+        '#title' => 'Title',
+        '#options' => array( 'Mr' => 'Mr','Mrs' => 'Mrs','Ms' => 'Ms'),
+        '#default_value'=>isset($result) ? $result['title'] : '',
+        '#prefix' => '<div class="selflist12"><div class="formdata" style="padding-bottom: 8px;">',
+        '#suffix' => '</div>',
+    );    
+    $form['first_name'] = array(
+        '#type' => 'textfield',
+        '#title' => t('First Name'),
+        '#size' => 25,
+        '#default_value'=>isset($result) ? $result['first_name'] : '',
+        '#required'=>TRUE,
+        '#prefix' => '<div class="formdata">',
+        '#suffix' => '</div>',
+    );
+    $form['middle_name'] = array(
+        '#type' => 'textfield',
+        '#title' => t('Middle Name'),
+        '#size' => 25,
+        '#default_value'=>isset($result) ? $result['middle_name'] : '',
+        '#prefix' => '<div class="formdata">',
+        '#suffix'=>'</div>',
+        '#required'=>TRUE,
+    );
+    $form['last_name'] = array(
+        '#type' => 'textfield',
+        '#title' => t('Last Name'),
+        '#size' => 25,
+        '#default_value'=>isset($result) ? $result['last_name'] : '',
+        '#prefix' => '<div class="formdata">',
+        '#suffix'=>'</div>',
+        '#required'=>TRUE,
+    );
+    $active = array( 0=> t('Male'), 1=> t('Female'));
+    $form['gender'] = array(
+        '#type' => 'radios',
+        '#title' => t('Gender'),
+        '#options' => $active,
+        '#required' => TRUE,
+        '#prefix' => '<div class="formdata" style="padding-bottom:8px;">',
+        '#suffix'=>'</div>',
+        //'#default_value' => 1, 
+        '#default_value'=>isset($gender) ? $gender : 0,
+    );
+   
+    $form['dob'] = array(
+        '#type' => 'date',
+        '#title' => 'Birthday',
+        '#required' => TRUE,
+        '#prefix' => '<div class="formdata">',
+        '#suffix'=>'</div></div>',
+        '#default_value'=>array(
+            'year'=>isset($year) ? $year : (int)(date('Y')),
+            'month'=>isset($month) ? $month : (int)(date('n')),
+            'day'=>isset($day) ? $day : (int)(date('j')),
+        ),
+    );
+    
+   
+    /*
+    $form['insured_height_feet']=array(
+        '#type'=>'select',
+        '#options'=>$feet_options,
+        '#title'=>'HEIGHT',
+        '#prefix'=>'<div class="height_weight_details">',
+        '#default_value'=>isset($feet) ? $feet : '0',
+        '#required'=>TRUE,
+          
+    );
+    $form['insured_height_inches']=array(
+        '#type'=>'select',
+        '#options'=>$inch_options,
+        '#default_value'=>isset($inches) ? $inches : 'None',
+        '#required'=>TRUE,
+    );
+    $form['insured_weight']=array(
+        '#type'=>'textfield',
+        '#size'=>5,
+        '#title'=>'Weight',
+        '#field_suffix'=>'Kgs',
+        //'#field_prefix'=>'WEIGHT',
+        '#suffix'=>'</div>',
+        '#required'=>TRUE,
+        '#default_value'=>isset($result) ? $result['weight'] : '',
+    );*/
+    
+    // Fetching All the Screening Questions for change functionality .Initially it wont display but after change click event it should be shown.
+    
+   
+    if(empty($result['flag'])){
+    
+    
+        $proposer_stp_details=db_select('get_quote_people_details','g')
+                            ->fields('g')
+                            ->condition('g.quote_id',$_SESSION['quick_quote']['quote_no'])
+                            ->condition('g.ordering',$insured_id)
+                            ->execute()->fetchAssoc();                          
+    }
+                           
+    
+    $form["pro_tobacco"]=array(
+        '#type'=>'radios',
+        '#title'=>t('Consumes tobacco ?'),
+        '#options'=>array(
+                    0=>'No',
+                    1=>'Yes',
+        ),
+        '#prefix'=>'<div class="datafirstslidefull"><div class="formdata">',
+        '#default_value'=>isset($proposer_stp_details['tobacco']) ? $proposer_stp_details['tobacco'] : $tobacco,
+        '#suffix'=>'</div></div>',
+    );  
+    $form["pro_tobacco_consumption"]=array(
+        '#type'=>'select',
+        '#options'=>array(
+           // 0=>'No',
+            1=>'Less than 20gm per day',
+            2=>'More than 20gm per day',
+        ),
+        '#attributes'=>array(
+            'class'=>array('tobacco_value'),
+        ),
+        '#prefix'=>'<div>',
+        '#suffix'=>'</div>',
+        '#default_value'=>isset($proposer_stp_details['tobacco_consumption']) ? $proposer_stp_details['tobacco_consumption'] : $tobacco_consumption,
+    );
+    $form["pro_alcohol"]=array(
+        '#type'=>'radios',
+        '#title'=>t('Consumes alcohol ?'),
+        '#options'=>array(
+            0=>'No',
+            1=>'Yes',
+        ),
+        '#prefix'=>'<div class="datafirstslidefull"><div class="formdata">',
+        '#suffix'=>'</div></div>',
+        '#default_value'=>isset($proposer_stp_details['alcohol']) ? $proposer_stp_details['alcohol'] : $alcohol,
+    );
+    $form["pro_alcohol_consumption"]=array(
+        '#type'=>'select',
+        '#options'=>array(
+           // 0=>'No',
+            1=>'Less than 60ml per day',
+            2=>'More than 60ml per day',
+        ),
+        '#attributes'=>array(
+            'class'=>array('tobacco_value'),
+        ),
+        '#prefix'=>'<div>',
+        '#suffix'=>'</div>',
+        '#default_value'=>isset($proposer_stp_details['alcohol_consumption']) ? $proposer_stp_details['alcohol_consumption'] : $alcohol_consumption,            
+    );
+    $form["pro_cigarette"]=array(
+        '#type'=>'radios',
+        '#title'=>t('Smokes Cigarette/Beedi ?'),
+        '#options'=>array(
+            0=>'No',
+            1=>'Yes',
+        ),
+        '#prefix'=>'<div class="datafirstslidefull"><div class="formdata">',
+        '#suffix'=>'</div></div>',
+        '#default_value'=>isset($proposer_stp_details['cigarette']) ? $proposer_stp_details['cigarette'] : $cigarette,
+    ); 
+    $form["pro_cigarette_consumption"]=array(
+        '#type'=>'select',
+        '#options'=>array(
+           // 0=>'Select',
+            1=>'Less than 5 per day',
+            2=>'More than 5 per day',
+        ),
+        '#prefix'=>'<div>',
+        '#suffix'=>'</div>',
+        '#attributes'=>array(
+            'class'=>array('tobacco_value'),
+        ),
+        '#default_value'=>isset($proposer_stp_details['cigarette_consumption']) ? $proposer_stp_details['cigarette_consumption'] : $cigarette_consumption,
+    ); 
+    
+     $form['screening_questions_start']=array(
+        '#prefix'=>'<div id="all_questions">',    
+    );
+    
+    
+    $query=db_select('screening_details','s')
+            ->condition('s.application_id',$app_id)
+            ->condition('s.insured_id',$insured_id)
+            ->fields('s')
+            ->orderBy('s.sid','ASC');    
+               
+    $screenings=$query->execute()->fetchAll();
+    $all_screening_id=array();
+    
+    foreach($screenings as $option){
+                
+                if(isset($option->mark)){
+                    $mark_value=array($option->mark); 
+                }
+                //dpr($option);exit;
+                 $all_screening_id[$option->sid]=$option->oid;
+                 $option_name=option_name($option->oid);//function for fetching options name .
+                
+                 $form['all_options_'.$option->oid]=array(
+                 
+                    '#markup'=>"<div>".$option_name."</div>",
+                 );
+                 $form['all_state_'.$option->oid]=array(
+                    '#type'=>'radios',
+                    '#options'=>array(
+                        1=>'Yes',
+                        0=>'No',
+                    ),
+                    '#prefix' => '<div class="datafirstslidefull"><div class="leftdata">',
+                    '#default_value' =>isset($option->screening_input) ? $option->screening_input : 0,
+                    '#suffix' => '</div></div>',
+                 );
+                 /*
+                 $form['all_mark_'.$option->oid]=array(
+                    '#type'=>'checkboxes',
+                    '#options'=>array(
+                        1=>'Mark the same for other members being insured?',
+                    ),
+                    '#default_value' => isset($mark_value) ? $mark_value : array(1),
+                 );*/
+    }
+    $form['all_screening_id']=array(
+            '#type'=>'hidden',
+            '#value'=>$all_screening_id,
+    );
+    $form['all_screening_flag']=array(
+            '#type'=>'hidden',
+    );
+    $form['screening_questions_exit']=array(
+        '#suffix'=>'</div>',
+    );
+    // All Screening Questions End
+    
+    // Fetching screening question marked for change .
+    $form['mark_change_screening_questions_start']=array(
+        '#prefix'=>'<div id="changed_mark_questions">',    
+    );
+    
+    $query=db_select('screening_details','s')
+            ->condition('s.application_id',$app_id)
+            ->condition('s.insured_id',$insured_id)
+            ->condition('s.mark',0)
+            ->fields('s',array('sid','oid','screening_input'))
+            ->orderBy('s.sid','ASC');       
+    $result_screening=$query->execute()->fetchAll();
+    
+   $screening_id=array();
+   if(isset($result_screening)){
+    
+            foreach($result_screening as $option){
+                
+                $screening_id[$option->sid]=$option->oid;
+                 $option_name=option_name($option->oid);//function for fetching options name .
+                
+                 $form['options_'.$option->oid]=array(
+                 
+                    '#markup'=>"<div>".$option_name."</div>",
+                 );
+                 $form['state_'.$option->oid]=array(
+                    '#type'=>'radios',
+                    '#options'=>array(
+                        1=>'Yes',
+                        0=>'No',
+                    ),
+                    '#prefix' => '<div class="datafirstslidefull"><div class="leftdata">',
+                    '#default_value' =>isset($option->screening_input) ? $option->screening_input : 0,
+                    '#suffix' => '</div></div>',
+                 );
+                 /*
+                 $form['state_'.$option->oid]=array(
+                    '#type'=>'checkboxes',
+                    '#options'=>array(
+                        1=>'Mark the same for other members being insured?',
+                    ),
+                    '#default_value' => array(1),
+                 );*/
+            }
+        $form['screening_id']=array(
+            '#type'=>'hidden',
+            '#value'=>$screening_id,
+        );
+        $form['mark_change_screening_flag']=array(
+            '#type'=>'hidden',
+            '#default_value'=>1,
+        );
+    }
+    $form['mark_change_screening_questions_exit']=array(
+        '#suffix'=>'</div>',
+    );
+    //  Marked for change Ends .
+    
+     $query=db_select('insured_data','i')
+            ->condition('i.application_id',$app_id)
+            ->condition('i.ordering',$insured_id,"<")
+            ->fields('i',array('ordering'))
+            ->range(0,1)
+            ->orderBy('i.ordering','DESC');
+            
+        $results=$query->execute()->fetchField();
+     
+     if(isset($results) && !empty($results)){
+        
+        if($results==1){
+            
+            $back=$base_url.'/application/'.$app_id.'/proposer';
+        }else{
+            $back=$base_url.'/application/'.$app_id.'/insured/'.$results;
+        }
+     }
+   $form['ajax_screening_questions']=array(
+   
+    '#markup'=>'<div class="ajax_screening"></div>',
+   );    
+       
+   $form['sc_change']=array(
+        '#markup'=>'<div class="screening_change">
+                        <div>You have already marked that your...</div>
+                    <a class="change" style="float: right;margin: -23px 0 0 0;" href="javascript:void(0)">Change</a>
+                    
+                    </div>',
+   ); 
+   
+   $form['back']=array(
+        
+        '#markup'=>'<div class="footerproceedlink">
+                        <div class="proceedleftlink">
+                        <ul>
+                            <li class="first"><a class="" href="'.$back.'">&lt; Back</a></li>
+                            <li class="last"><a href="#">Continue Later</a></li>
+                        </ul>
+                        </div>
+                    <div class="proceedrightlink"> Add details of '.strtoupper($result["people_type"]).'&nbsp;'.$result['sub_ordering'].'&nbsp;&nbsp;
+                        ',
+    );
+    $form['action_proceed']=array(
+        '#type'=>'submit',
+        '#value'=>'Proceed',
+		'#suffix'=>'</div></div>',  
+    );
+    
+    return $form;   
+}
+function insured_level_form_submit($form,&$form_state){
+    
+    global $sforce,$product_conf;
+    $values=$form_state['values'];
+    
+    if(isset($_SESSION['quick_quote'])){
+        
+        $session_values=$_SESSION['quick_quote'];
+        
+    }
+    
+    $sf_opp_id = db_select('applications','a')
+                ->fields('a',array('sf_id'))
+                ->condition('app_id',$values['app_id'])
+                ->execute()
+                ->fetchField();   
+    
+    $month=$values['dob']['month'];
+    $day=$values['dob']['day'];
+    $year=$values['dob']['year'];
+    
+    $dob=strtotime("$day-$month-$year");
+    
+    
+    if(!empty($values['pro_tobacco'])){
+        
+        $tobacco_consumption=$values['pro_tobacco_consumption'];
+    }else{
+        $tobacco_consumption=0;
+    }
+    
+    if(!empty($values['pro_alcohol'])){
+        
+        $alcohol_consumption=$values['pro_tobacco_consumption'];
+    }else{
+        $alcohol_consumption=0;
+    }
+    if(!empty($values['pro_cigarette'])){
+        
+        $cigarette_consumption=$values['pro_tobacco_consumption'];
+    }else{
+        $cigarette_consumption=0;
+    }
+    
+    
+    /*
+     db_update('get_quote_people_details')
+        ->fields(array(
+            'tobacco'=>$values['pro_tobacco'],
+            'alcohol'=>$values['pro_alcohol'],
+            'cigarette'=>$values['pro_cigarette'],
+            'tobacco_consumption'=>$values['pro_tobacco_consumption'],
+            'alcohol_consumption'=>$values['pro_alcohol_consumption'],
+            'cigarette_consumption'=>$values['pro_cigarette_consumption'],
+            'dob'=>$dob,
+            'gender'=>$values['gender'],
+        ))
+        ->condition('quote_id',$_SESSION['quick_quote']['quote_no'])
+        ->condition('sub_ordering',$values['insured'])
+        ->execute();*/
+    
+    $height_cms=conversion($values['insured_height_feet'],$values['insured_height_inches']);
+    
+    db_update("insured_data")
+            ->fields(array(
+                    'title' => $values['title'],
+                    'first_name'=>$values['first_name'],
+                    'middle_name'=>$values['middle_name'],
+                    'last_name'=>$values['last_name'],
+                    'gender'=>$values['gender'],
+                    'dob'=>$dob,
+                    'day'=>$values['dob']['day'],
+                    'month'=>$values['dob']['month'],
+                    'year'=>$values['dob']['year'],
+                    'relationship'=>$values['relationship'],
+                    'height'=>$height_cms,
+                    'weight'=>$values['insured_weight'],
+                    'tobacco'=>$values['pro_tobacco'],
+                    'alcohol'=>$values['pro_alcohol'],
+                    'cigarette'=>$values['pro_cigarette'],
+                    'tobacco_consumption'=>$tobacco_consumption,
+                    'alcohol_consumption'=>$alcohol_consumption,
+                    'cigarette_consumption'=>$cigarette_consumption,
+                    'flag'=>1,
+            ))
+            ->condition('application_id',$values['app_id'])
+            ->condition('ordering',$values['insured'])
+            ->execute(); 
+            
+    $stored_sf_id=db_select('insured_data','i')
+                    ->fields('i',array('sf_id'))
+                    ->condition('application_id',$values['app_id'])
+                    ->condition('ordering',$values['insured'])
+                    ->execute()->fetchField();
+               
+                  
+            if(empty($stored_sf_id)){
+                
+                 //insert insured details
+                $insured_data = array(
+                    //'quote_no' => '',
+                    'cgn_Title__c'=>$form_state['values']['title'],                    
+                    'cgn_First_Name__c'=>$form_state['values']['first_name'],
+                    'cgn_Middle_Name__c'=>$form_state['values']['middle_name'],
+                    'cgn_Last_Name__c'=>$form_state['values']['last_name'],
+                    'cgn_Gender__c'=>$form_state['values']['gender'],
+                    'cgn_Occupation__c'=>$form_state['values']['occupation'],
+                    'cgn_Gainful_Annual_income__c'=>$form_state['values']['gross_income'],
+                    'cgn_DOB__c'=>date('Y-m-d',$dob),
+                    'cgn_Height__c' =>$height_cms,
+                    'cgn_Weight__c' => $values['insured_weight'],
+                    'cgn_Opportunity__c'=>$sf_opp_id,
+                    //'cgn_BMI__c' => '',
+                    //'cgn_Relationship_with_Proposer__c' => '',
+                    //'cgn_Underwriting_Required_Flag__c' => '',
+                );
+                $sf_result = $sforce->mapSforceLead($insured_data,'cgn_Insured_Details__c');
+               //echo $sf_id;exit;
+                    if(sfdcErrors($sf_result,'cgn_Insured_Details__c')){
+                        db_update('insured_data')
+                        ->fields(array(
+                            'sf_id' =>$sf_result->id, 
+                        ))
+                        ->condition('application_id',$values['app_id'])
+                        ->condition('ordering',$values['insured'])
+                        ->execute(); 
+                } 
+                
+            }else{
+                
+                $insured_data = array(
+                    'cgn_Title__c'=>$form_state['values']['title'],                    
+                    'cgn_First_Name__c'=>$form_state['values']['first_name'],
+                    'cgn_Middle_Name__c'=>$form_state['values']['middle_name'],
+                    'cgn_Last_Name__c'=>$form_state['values']['last_name'],
+                    'cgn_Gender__c'=>$form_state['values']['gender'],
+                    'cgn_Occupation__c'=>$form_state['values']['occupation'],
+                    'cgn_Gainful_Annual_income__c'=>$form_state['values']['gross_income'],
+                    'cgn_DOB__c'=>date('Y-m-d',$dob),
+                    'cgn_Height__c' =>$height_cms,
+                    'cgn_Weight__c' => $values['insured_weight'],
+                    'cgn_Opportunity__c'=>$sf_opp_id,
+                    //'cgn_BMI__c' => '',
+                    //'cgn_Relationship_with_Proposer__c' => '',
+                    //'cgn_Underwriting_Required_Flag__c' => '',
+                );
+                $sf_result = $sforce->updateSforceLead($insured_data,'cgn_Insured_Details__c',$stored_sf_id);
+               //echo $sf_id;exit;
+                    if(sfdcErrors($sf_result,'cgn_Insured_Details__c')){
+                        db_update('insured_data')
+                        ->fields(array(
+                            'sf_id' =>$sf_result->id, 
+                        ))
+                        ->condition('application_id',$values['app_id'])
+                        ->condition('ordering',$values['insured'])
+                        ->execute(); 
+                }
+            }
+           
+    
+    // Checking and updating values if the propser has clicked for change button & updating all the screening questions.
+    if(isset($values['all_screening_flag']) && !empty($values['all_screening_flag'])){
+            if(!empty($values['all_screening_id'])){
+                
+                foreach($values['all_screening_id'] as $sid=>$oid){
+        
+                 $sf_insured_id=db_select('insured_data','i')
+                        ->fields('i',array('sf_id'))
+                        ->condition('application_id',$values['app_id'])
+                        ->condition('ordering',$values['insured'])
+                        ->execute()->fetchField(); 
+        
+                 db_update("screening_details")
+                    ->fields(array(
+                        'screening_input'=>$values['all_state_'.$oid],        
+                    ))
+                    ->condition('sid',$sid)
+                    ->condition('oid',$oid)
+                    ->condition('application_id',$values['app_id'])
+                    ->execute();
+                    
+                  $sc_details=db_select('uc_attribute_options','u')
+                                ->fields('u')
+                                ->condition('u.oid',$oid)
+                                ->execute()->fetchAssoc();
+                                
+                    if(!empty($sc_details)){
+                        
+                        $shortname=$sc_details['shortName'];
+                        $name=$sc_details['name'];
+                        
+                    }
+                    
+                    if($values['all_state_'.$oid]){
+                        $value='Yes';
+                    }else{
+                        $value='No';
+                    }
+                    
+                   $query=db_select('screening_details','s')
+                            ->fields('s',array('sf_opp_id'))
+                            ->condition('sid',$sid)
+                            ->condition('oid',$oid)
+                            ->condition('application_id',$values['app_id'])
+                            ->execute()->fetchField();
+                            
+                    // Checking if sf is already present or not.
+                            
+                    if(empty($query)){
+                        
+                        $screening_data=array(
+                            'cgn_Question_Set_Code__c'=>$shortname,
+                            'cgn_Question_Code__c'=>substr($name,0,9),
+                            'cgn_Data_Element_Code__c'=>$value,
+                            'cgn_Response_Value_Answer__c'=>'',
+                            'cgn_Insured_Detail__c'=>$sf_insured_id,
+                        );
+                        $sf_screning_result = $sforce->mapSforceLead($screening_data,'Screening_Question_Opportunity__c');
+                        
+                        if($sf_screning_result){
+                            if(sfdcErrors($sf_screning_result,'Screening_Question_Opportunity__c')){
+                                db_update('screening_details')
+                                    ->fields(array(
+                                        'sf_opp_id' =>$sf_screning_result->id, 
+                                    ))
+                                   ->condition('sid',$sid)
+                                   ->condition('oid',$oid)
+                                   ->condition('application_id',$values['app_id'])
+                                   ->execute();
+                            }
+                        }
+                    }else{
+                        
+                        $screening_data=array(
+                            'cgn_Question_Set_Code__c'=>$shortname,
+                            'cgn_Question_Code__c'=>substr($name,0,9),
+                            'cgn_Data_Element_Code__c'=>$value,
+                            'cgn_Insured_Detail__c'=>$sf_insured_id,
+                            'cgn_Response_Value_Answer__c'=>'',
+                        );
+                        $sf_screning_result = $sforce->updateSforceLead($screening_data,'Screening_Question_Opportunity__c',$query);
+                        if($sf_screning_result){
+                            if(sfdcErrors($sf_screning_result,'Screening_Question_Opportunity__c')){
+                                db_update('screening_details')
+                                    ->fields(array(
+                                        'sf_opp_id' =>$sf_screning_result->id, 
+                                    ))
+                                   ->condition('sid',$sid)
+                                   ->condition('oid',$oid)
+                                   ->condition('application_id',$values['app_id'])
+                                   ->execute();
+                            }       
+                        }   
+                    }
+                }    
+            }
+    }
+           
+    // Checking and updating values if the propser has marked same for all other users.
+   if(isset($values['mark_change_screening_flag']) && !empty($values['mark_change_screening_flag'])){
+        if(!empty($values['screening_id'])){
+            
+            foreach($values['screening_id'] as $sid=>$oid){
+            
+                db_update("screening_details")
+                    ->fields(array(
+                        'screening_input'=>$values['state_'.$oid],        
+                    ))
+                    ->condition('sid',$sid)
+                    ->condition('oid',$oid)
+                    ->condition('application_id',$values['app_id'])
+                    ->execute();
+            }
+        }
+    }
+    
+   $quote_details=_plan_insured_total_premium($session_values['quote_no'],$values['app_id']);
+  // dpr($quote_details);exit;
+    if($quote_details){
+        
+        try{
+           $response_service=$product_conf->getQuote('compute',$quote_details);
+        }catch(Exception $e){
+            return 'Service Not available';
+        }
+    }
+  //  dpr($response_service);exit;
+    $addon_premiums=db_select('quote_stored_addon','s')
+                ->fields('s',array('premium'))
+                ->condition('qid',$session_values['quote_no'])
+                ->condition('uid',$guestuser->uid)
+                ->execute()->fetchAll();
+                
+     $add_total=0;      
+     foreach($addon_premiums as $premium){
+        
+            $add_total+=$premium->premium;
+      }          
+    
+    if($response_service){
+    
+        db_update('get_quote')
+            ->fields(array(
+                'total_premium'=>(double)$response_service->return->listofquotationTO->totPremium + $add_total,
+            ))
+            ->condition('qid',$session_values['quote_no'])
+          ->execute();  
+    }
+    $query=db_select('insured_data','i')
+            ->condition('i.application_id',$values['app_id'])
+            ->condition('i.ordering',$values['insured'],">")
+            ->fields('i',array('ordering'))
+            ->range(0,1)
+            ->orderBy('i.ordering','ASC');
+            
+        $insured_id=$query->execute()->fetchField();
+     
+        if(!empty($insured_id)){
+            
+            $form_state['redirect']='application/'.$values['app_id'].'/insured/'.$insured_id;   
+            
+        }else{
+            $form_state['redirect']='application/'.$values['app_id'].'/confirmation';
+        }
+         
+}
+/**
+ * 
+ * Implements drupal_get_form  page callback
+ * Form used for capturing proposer screening details 
+ * and height and weight for proposer
+ * 
+ */
+function application_level_form($form,&$form_state,$app_id){
+    
+    drupal_add_js(drupal_get_path('module','application').'/js/application.js');
+    
+    if(isset($_SESSION['quick_quote'])){
+        
+        $values=$_SESSION['quick_quote'];
+    }
+    //dpr($_SESSION);exit;
+    global $base_url;
+    
+    $query=db_select('insured_data','i')
+            ->condition('i.application_id',$app_id)
+            ->fields('i')
+            ->range(0,1)
+            ->orderBy('i.ordering','ASC');
+            
+    $result=$query->execute()->fetchAssoc();
+    if(isset($result) && !empty($result)){
+        
+        if(!empty($result['height'])){
+            
+            $conversion=conversion_cms_to_feet_and_inches($result['height']);
+            $feet=$conversion['feet'];
+            $inches=$conversion['inches'];
+            
+        }
+        if(!empty($result['relationship'])){
+            
+            if($result['relationship']!='Self'){
+            
+                $fname=$result['first_name'];
+                $mname=$result['middle_name'];
+                $lname=$result['last_name'];
+                $gender=$result['gender'];
+                $title=$result['title'];
+                $day=$result['day'];
+                $month=$result['month'];
+                $year=$result['year'];
+            }   
+        }
+        $tobacco=empty($result['tobacco']) ? 0 : $result['tobacco'];
+        $alcohol=empty($result['alcohol']) ? 0 : $result['alcohol'];
+        $cigarette=empty($result['cigarette']) ? 0 : $result['cigarette'];
+        
+        $tobacco_consumption=empty($result['tobacco_consumption']) ? 1 : $result['tobacco_consumption'];
+        $alcohol_consumption=empty($result['alcohol_consumption']) ? 1 : $result['alcohol_consumption'];
+        $cigarette_consumption=empty($result['cigarette_consumption']) ? 1 : $result['cigarette_consumption'];
+    }
+    
+    $form['app_id']=array(
+        '#type'=>'hidden',
+        '#value'=>$app_id,
+    );
+    $form['insured']=array(
+        '#type'=>'hidden',
+        '#value'=>$result['ordering'],
+    );
+    $form['title']=array(
+        '#markup'=>'<h2>Adult 1 being insured is</h2>',
+    );
+    
+    $relationship=isset($result['relationship']) ? $result['relationship'] :'Self';
+    
+    $form['relationship']=array(
+        '#type'=>'radios',
+        '#options'=>array(
+            'Self'=>'Self',
+            'Spouse'=>'Spouse',
+            'Brother'=>'Brother',
+            'Sister'=>'Sister',
+            'Father'=>'Father',
+            'Mother'=>'Mother',
+        ),
+        '#default_value'=>$relationship,
+    );
+	
+	$form['height_title']=array(
+		'#markup'=>'<div class="selflist"><div class="datafirstslide"><div class="leftdata"><h4>Enter your height and weight</h4></div> <div class="formdata">',
+    );
+    
+    $feet_options=array(
+        "0"=>"Feet",
+        "1"=>"1",
+        "2"=>"2",
+        "3"=>"3",
+        "4"=>"4",
+        "5"=>"5",
+        "6"=>"6",
+        "7"=>"7",
+        "8"=>"8",
+        "9"=>"9",
+    );
+    $inch_options=array(
+        "None"=>"Inches",
+        "0"=>"0",
+        "1"=>"1",
+        "2"=>"2",
+        "3"=>"3",
+        "4"=>"4",
+        "5"=>"5",
+        "6"=>"6",
+        "7"=>"7",
+        "8"=>"8",
+        "9"=>"9",
+        "10"=>"10",
+        "11"=>"11",
+        "12"=>"12",
+    );
+    /*
+	$weight_options=array(
+        "None"=>"Kgs",
+        "0"=>"0",
+        "1"=>"1",
+        "2"=>"2",
+        "3"=>"3",
+        "4"=>"4",
+        "5"=>"5",
+        "6"=>"6",
+        "7"=>"7",
+        "8"=>"8",
+        "9"=>"9",
+        "10"=>"10",
+        "11"=>"11",
+        "12"=>"12",
+    );*/
+    
+	 $form['height_title2']=array(
+		'#markup'=>'<label>HEIGHT</label>',
+    );
+    $form['height_feet']=array(
+    
+        '#type'=>'select',	
+        '#options'=>$feet_options,
+        //'#field_prefix'=>'HEIGHT',
+        '#prefix'=>'<div class="height_weight_details">',
+        '#default_value'=>isset($feet) ? $feet : '0',
+		'#suffix'=>'',
+        '#required'=>TRUE,
+    );
+    $form['height_inches']=array(
+        '#type'=>'select',
+        '#options'=>$inch_options,
+        '#default_value'=>isset($inches) ? $inches : 'None',
+        '#required'=>TRUE,
+
+    );
+	$form['height_title3']=array(
+		'#markup'=>'<label style="padding-left: 15px;">WEIGHT</label>',
+    );
+	/*$form['weight']=array(
+        '#type'=>'select',
+        '#options'=>$weight_options,
+        '#default_value'=>isset($weight) ? $weight : 'None',
+		'#suffix'=>'</div></div></div>',
+    );*/
+    $form['weight']=array(
+    
+        '#type'=>'textfield',
+        '#size'=>5,
+        '#field_suffix'=>'Kgs',
+        //'#field_prefix'=>'WEIGHT',
+        '#suffix'=>'</div></div></div>',
+        '#required'=>TRUE,
+        '#default_value'=>isset($result['weight']) && !empty($result['weight']) ? $result['weight'] : '', 
+    );
+	$form["markresponse"]=array(
+        '#type'=>'radios',
+        '#title'=>t('Mark all responses as'),
+        '#options'=>array(
+                    0=>'No',
+                    1=>'Yes',
+        ),
+		'#prefix'=>'<div class="datafirstslidefull"><div class="leftdata"><h4>HEALTH AND LIFESTYLE</h4></div><div class="formdata">',
+		'#suffix'=>'</div></div>',
+    );
+    $form['title_insured'] = array(
+            '#type' => 'select',
+            '#title' => 'Title',
+            '#options' => array( 'Mr' => 'Mr','Mrs' => 'Mrs','Ms' => 'Ms'),
+            '#default_value'=>isset($title) ? $title : '',
+             '#states' => array(
+                'visible' => array(
+                    ':input[name="relationship"]' => array(
+                    
+                        array('value' => 'Spouse'),
+                        array('value' => 'Brother'),
+                        array('value' => 'Sister'),
+                        array('value' => 'Father'),
+                        array('value' => 'Mother'),
+                    ),
+                ),
+            ),
+			'#prefix' => '<div class="selflist12"><div class="formdata" style="padding-bottom: 8px;">',
+            '#default_value'=>isset($title) ? $title : '',
+			'#suffix' => '</div>',
+            
+    );
+        
+    $form['first_name'] = array(
+            '#type' => 'textfield',
+            '#title' => t('First Name'),
+            '#size' => 25,
+           '#default_value'=>isset($fname) ? $fname : '',
+          //  '#required'=>TRUE,
+		  '#prefix' => '<div class="formdata">',
+          '#states' => array(
+                'visible' => array(
+                    ':input[name="relationship"]' => array(
+                    
+                        array('value' => 'Spouse'),
+                        array('value' => 'Brother'),
+                        array('value' => 'Sister'),
+                        array('value' => 'Father'),
+                        array('value' => 'Mother'),
+                    ),
+                ),
+            ),
+			'#suffix' => '</div>',
+    );
+    
+     $form['middle_name'] = array(
+            '#type' => 'textfield',
+            '#title' => t('Middle Name'),
+            '#size' => 25,
+          '#default_value'=>isset($mname) ? $mname : '',
+            //'#required'=>TRUE,
+			'#prefix' => '<div class="formdata">',
+            '#states' => array(
+                'visible' => array(
+                    ':input[name="relationship"]' => array(
+                    
+                        array('value' => 'Spouse'),
+                        array('value' => 'Brother'),
+                        array('value' => 'Sister'),
+                        array('value' => 'Father'),
+                        array('value' => 'Mother'),
+                    ),
+                ),
+            ),
+            '#suffix'=>'</div>'
+            
+        );
+     $form['last_name'] = array(
+            '#type' => 'textfield',
+            '#title' => t('Last Name'),
+            '#size' => 25,
+            '#default_value'=>isset($lname) ? $lname : '',
+            //'#required'=>TRUE,
+			'#prefix' => '<div class="formdata">',
+            '#states' => array(
+                'visible' => array(
+                    ':input[name="relationship"]' => array(
+                        array('value' => 'Spouse'),
+                        array('value' => 'Brother'),
+                        array('value' => 'Sister'),
+                        array('value' => 'Father'),
+                        array('value' => 'Mother'),
+                    ),
+                ),
+            ),
+			'#suffix'=>'</div>'
+     );
+     $active = array( 0=> t('Male'), 1=> t('Female'));
+     $form['gender'] = array(
+        '#type' => 'radios',
+        '#title' => t('Gender'),
+        '#options' => $active,
+        '#default_value'=>isset($gender) ? $gender : 0,
+        //'#required' => TRUE, 
+		'#prefix' => '<div class="formdata" style="padding-bottom:8px;">',
+        '#states' => array(
+                'visible' => array(
+                    ':input[name="relationship"]' => array(
+                        array('value' => 'Spouse'),
+                        array('value' => 'Brother'),
+                        array('value' => 'Sister'),
+                        array('value' => 'Father'),
+                        array('value' => 'Mother'),
+                    ),
+                ),
+            ),
+		'#suffix'=>'</div>',
+        //'#default_value'=>isset($gender) ? $gender : 0,
+    );
+   
+   
+    $form['dob'] = array(
+        '#type' => 'date',
+        '#title' => 'Birthday',
+        //'#required' => TRUE,
+        '#prefix' => '<div class="formdata">',
+        '#default_value'=>array(
+            'year'=>isset($year) ? $year : (int)(date('Y')),
+            'month'=>isset($month) ? $month : (int)(date('n')),
+            'day'=>isset($day) ? $day : (int)(date('j')),
+        ),
+		'#suffix'=>'</div></div>',
+        '#states' => array(
+                'visible' => array(
+                    ':input[name="relationship"]' => array(
+                        array('value' => 'Spouse'),
+                        array('value' => 'Brother'),
+                        array('value' => 'Sister'),
+                        array('value' => 'Father'),
+                        array('value' => 'Mother'),
+                    ),
+                ),
+            ),
+    );   
+	
+    /*$form['weight']=array(
+        '#type'=>'textfield',
+        '#size'=>5,
+        '#field_suffix'=>'Kgs',
+        '#field_prefix'=>'WEIGHT',
+        '#suffix'=>'</div></div></div>',
+        '#required'=>TRUE,
+        '#default_value'=>isset($result['weight']) && !empty($result['weight']) ? $result['weight'] : '', 
+    );*/
+    
+    if(empty($result['flag'])){
+        
+        
+        $proposer_stp_details=db_select('get_quote_people_details','g')
+                            ->fields('g')
+                            ->condition('g.quote_id',$_SESSION['quick_quote']['quote_no'])
+                            ->condition('g.quote_id',$_SESSION['quick_quote']['quote_no'])
+                            ->condition('g.ordering',1)
+                            ->execute()->fetchAssoc();
+        
+    }
+     
+     
+    // dpr($proposer_stp_details);exit;                       
+    
+    $form["pro_tobacco"]=array(
+        '#type'=>'radios',
+        '#title'=>t('Consumes tobacco ?'),
+        '#options'=>array(
+                    0=>'No',
+                    1=>'Yes',
+        ),
+		'#prefix'=>'<div class="datafirstslidefull"><div class="formdata">',
+        '#default_value'=>isset($proposer_stp_details['tobacco']) ? $proposer_stp_details['tobacco'] : $tobacco,
+		'#suffix'=>'</div></div>',
+    );  
+    $form["pro_tobacco_consumption"]=array(
+        '#type'=>'select',
+        '#options'=>array(
+           // 0=>'No',
+            1=>'Less than 20gm per day ',
+            2=>'More than 20gm per day ',
+        ),
+        '#attributes'=>array(
+            'class'=>array('tobacco_value'),
+        ),
+		'#prefix'=>'<div>',
+        '#default_value'=>isset($proposer_stp_details['tobacco_consumption']) ? $proposer_stp_details['tobacco_consumption'] : $tobacco_consumption,
+		'#suffix'=>'</div>',
+    );
+    $form["pro_alcohol"]=array(
+        '#type'=>'radios',
+        '#title'=>t('Consumes alcohol ?'),
+        '#options'=>array(
+            0=>'No',
+            1=>'Yes',
+        ),
+		'#prefix'=>'<div class="datafirstslidefull"><div class="formdata">',
+        '#default_value'=>isset($proposer_stp_details['alcohol']) ? $proposer_stp_details['alcohol'] : $alcohol,
+		'#suffix'=>'</div></div>',
+    );
+    $form["pro_alcohol_consumption"]=array(
+        '#type'=>'select',
+        '#options'=>array(
+           // 0=>'No',
+            1=>'Less than 60ml per day',
+            2=>'More than 60ml per day',
+        ),
+        '#attributes'=>array(
+            'class'=>array('tobacco_value'),
+        ),
+		'#prefix'=>'<div>',
+        '#default_value'=>isset($proposer_stp_details['alcohol_consumption']) ? $proposer_stp_details['alcohol_consumption'] : $alcohol_consumption,     
+		'#suffix'=>'</div>',       
+    );
+    $form["pro_cigarette"]=array(
+        '#type'=>'radios',
+        '#title'=>t('Smokes Cigarette etc ?'),
+        '#options'=>array(
+            0=>'No',
+            1=>'Yes',
+        ),
+		'#prefix'=>'<div class="datafirstslidefull"><div class="formdata">',
+        '#default_value'=>isset($proposer_stp_details['cigarette']) ? $proposer_stp_details['cigarette'] : $cigarette,
+		'#suffix'=>'</div></div>',
+    ); 
+    $form["pro_cigarette_consumption"]=array(
+        '#type'=>'select',
+        '#options'=>array(
+          //  0=>'Select',
+            1=>'Less than 5 per day',
+            2=>'More than 5 per day',
+        ),
+        '#attributes'=>array(
+            'class'=>array('tobacco_value'),
+        ),
+		'#prefix'=>'<div>',
+        '#default_value'=>isset($proposer_stp_details['cigarette_consumption']) ? $proposer_stp_details['cigarette_consumption'] : $cigarette_consumption,
+		'#suffix'=>'</div>',   
+    ); 
+    
+    // Loading screening options attached to the plan id.
+    $node=node_load($_SESSION['quick_quote']['planId']);
+        
+    if($node){
+    
+        foreach($node->attributes as $attribute){
+            
+            if($attribute->name=="Screening"){
+                
+                $options=$attribute->options;
+                foreach($options as $option){
+                    
+                     $option_name=$option->name;
+                    
+                     $form['options_'.$option->oid]=array(
+                        '#markup'=>"<h4>".$option_name."</h4>",
+                     );
+                     
+                     // fetching result of saved screening details if applicable.Generally used for back button
+                     // and setting in the default value for the field .
+                     $result=db_select("screening_details","s")
+                            ->fields("s",array("screening_input","mark"))
+                            ->condition("s.oid",$option->oid)
+                            ->condition("s.application_id",$app_id)
+                            ->condition("s.insured_id",1)
+                            ->execute()->fetchAssoc();
+                     
+                      if(isset($result) && !empty($result)){
+                        
+                            if(isset($result['screening_input'])){
+                                $state_value=$result['screening_input'];                
+                            }
+                            if(isset($result['mark'])){
+                                $mark_value=array($result['mark']);
+                            }
+                      }
+                      
+                    if(($values['no_adults'] +  $values['no_childs']) > 1 ){
+                        
+                        $form['mark_'.$option->oid]=array(
+                            '#type'=>'checkboxes',
+                            '#options'=>array(
+                                1=>'Mark the same for other members being insured?',
+                            ),
+        					'#prefix' => '<div class="datafirstslidefull"><div class="leftdata">',
+                            '#default_value' => !empty($result['mark']) ?  $mark_value : array(1),
+        					'#suffix' => '</div>'
+                        );
+                    }else{ 
+                        $form['mark_'.$option->oid]=array(
+        					'#prefix' => '<div class="datafirstslidefull"><div class="leftdata">',
+        					'#suffix' => '</div>'
+                        );
+                        
+                    }
+                    
+    				 $form['state_'.$option->oid]=array(
+                        '#type'=>'radios',
+                        '#options'=>array(
+                            1=>'Yes',
+                            0=>'No',
+                        ),
+    					'#prefix' => '<div class="formdata">',
+                        '#default_value' =>isset($state_value) ? $state_value : 0,
+    					'#suffix' => '</div></div>'
+                     );
+    				 
+                }
+            }
+        }
+    }
+    
+     $form['back']=array(
+        
+        '#markup'=>'<div class="footerproceedlink">
+                        <div class="proceedleftlink">
+                        <ul>
+                            <li class="first"><a class="" href="'.$base_url.'/application_details/'.$app_id.'">&lt; Back</a></li>
+                            <li class="last"><a href="#">Continue Later</a></li>
+                        </ul>
+                        </div>
+                    <div class="proceedrightlink"> Add details of adult 1&nbsp;&nbsp;
+                        ',
+         
+    );
+    $form['action_proceed']=array(
+        '#type'=>'submit',
+        '#value'=>'Proceed',
+		'#suffix'=>'</div></div>',  
+    );
+    return $form;
+}
+
+function application_level_form_submit($form,&$form_state){
+
+   global $product_conf,$user;
+   
+   if(!$user->uid){
+        if(isset($_SESSION['guestuser'])){
+            
+            $guestuser = $_SESSION['guestuser'];    
+        }
+   }else{
+        $guestuser=$user;
+   }     
+    if(isset($_SESSION['quick_quote'])){
+        
+        $session_values=$_SESSION['quick_quote'];
+        
+    }
+    global $sforce;
+    $values=$form_state['values'];
+        
+    
+    $height_cms=conversion($values['height_feet'],$values['height_inches']);
+    
+    if(!empty($values['pro_tobacco'])){
+        
+        $tobacco_consumption=$values['pro_tobacco_consumption'];
+    }else{
+        $tobacco_consumption=0;
+    }
+    
+    if(!empty($values['pro_alcohol'])){
+        
+        $alcohol_consumption=$values['pro_tobacco_consumption'];
+    }else{
+        $alcohol_consumption=0;
+    }
+    if(!empty($values['pro_cigarette'])){
+        
+        $cigarette_consumption=$values['pro_tobacco_consumption'];
+    }else{
+        $cigarette_consumption=0;
+    }
+    
+    
+    $insured_update=db_select('insured_data','i')
+            ->condition('i.application_id',$values['app_id'])
+            ->fields('i',array('insured_id'))
+            ->range(0,1)
+            ->orderBy('i.insured_id','ASC');
+            
+    $result_id=$insured_update->execute()->fetchField();
+    
+    if(isset($result_id) && !empty($result_id)){ 
+        
+        
+        if($values['relationship']!='Self'){
+        
+            $month=$values['dob']['month'];
+            $day=$values['dob']['day'];
+            $year=$values['dob']['year'];
+            
+            $dob=strtotime("$day-$month-$year");
+                
+            db_update('insured_data')
+            ->fields(array(
+                'first_name'=>$values['first_name'],
+                'middle_name'=>$values['middle_name'],
+                'last_name'=>$values['last_name'],
+                'gender'=>$values['gender'],
+                'dob'=>$dob,
+                'day'=>$values['dob']['day'],
+                'month'=>$values['dob']['month'],
+                'year'=>$values['dob']['year'],
+                'relationship'=>$values['relationship'],
+                'height'=>$height_cms,
+                'weight'=>$values['weight'],
+                'tobacco'=>$values['pro_tobacco'],
+                'alcohol'=>$values['pro_alcohol'],
+                'cigarette'=>$values['pro_cigarette'],
+                'tobacco_consumption'=>$tobacco_consumption,
+                'alcohol_consumption'=>$alcohol_consumption,
+                'cigarette_consumption'=>$cigarette_consumption,
+                'flag'=>1,
+
+            ))
+            ->condition('application_id',$values['app_id'])
+            ->condition('insured_id',$result_id)
+            ->execute();
+            
+        }else{
+            
+            $query=db_select('applications','a')
+                    ->fields('a')
+                    ->condition('a.app_id',$values['app_id'])
+                    ->execute()->fetchAssoc();
+             
+            db_update('insured_data')
+            ->fields(array(
+                'first_name'=>$query['fname'],
+                'middle_name'=>$query['mname'],
+                'last_name'=>$query['lname'],
+                'gender'=>$query['gender'],
+                'dob'=>$query['dob'],
+                'day'=>$query['day'],
+                'month'=>$query['month'],
+                'year'=>$query['year'],
+                'relationship'=>$values['relationship'],
+                'height'=>$height_cms,
+                'weight'=>$values['weight'],
+                'tobacco'=>$values['pro_tobacco'],
+                'alcohol'=>$values['pro_alcohol'],
+                'cigarette'=>$values['pro_cigarette'],
+                'tobacco_consumption'=>$tobacco_consumption,
+                'alcohol_consumption'=>$alcohol_consumption,
+                'cigarette_consumption'=>$cigarette_consumption,
+            ))
+            ->condition('application_id',$values['app_id'])
+            ->condition('insured_id',$result_id)
+            ->execute();
+        }
+            
+    }
+    $sf_insured_id=db_select('insured_data','i')
+                        ->fields('i',array('sf_id'))
+                        ->condition('application_id',$values['app_id'])
+                        //->condition('ordering',$values['insured'])
+                        ->execute()->fetchField();
+                        
+    $node=node_load($_SESSION['quick_quote']['planId']);
+    
+    if($node){
+    
+        foreach($node->attributes as $attribute){
+            
+            if($attribute->name=="Screening"){
+                
+                $options=$attribute->options;
+                //dpr($attribute);
+                 $query=db_select('insured_data','i')
+                        ->condition('i.application_id',$values['app_id'])
+                        ->fields('i',array('insured_id','ordering'))
+                        ->orderBy('i.insured_id','ASC');
+                
+                $insured_ids=$query->execute();
+                
+                foreach($insured_ids as $insured_id){
+                     
+                    foreach($options as $option){
+                        
+                        $fetch=db_select("screening_details",'s')
+                                ->fields('s',array('sid'))
+                                ->condition('s.oid',$option->oid)
+                                ->condition('s.insured_id',$insured_id->insured_id)
+                                ->condition('s.application_id',$values['app_id'])
+                                ->execute()->fetchField();
+                                
+                        if(isset($fetch) && !empty($fetch)){
+                            
+                            db_update("screening_details")
+                                ->fields(array(
+                                    'screening_input'=>$values['state_'.$option->oid],
+                                    'mark'=>$values['mark_'.$option->oid][1],
+                                    )
+                                )
+                                ->condition('oid',$option->oid)
+                                ->condition('insured_id',$insured_id->insured_id)
+                                ->condition('application_id',$values['app_id'])
+                                ->execute();
+                                
+                        }else{
+                            $result=db_insert("screening_details")
+                                ->fields(array(
+                                    'oid'=>$option->oid,
+                                    'insured_id'=>$insured_id->ordering,
+                                    'screening_input'=>$values['state_'.$option->oid],
+                                    'mark'=>$values['mark_'.$option->oid][1],
+                                    'application_id'=>$values['app_id'],
+                                    )
+                                )
+                                ->execute();
+                                
+                            $screening_data=array(
+                                'cgn_Question_Set_Code__c'=>$shortname,
+                                'cgn_Question_Code__c'=>substr($name,0,9),
+                                'cgn_Data_Element_Code__c'=>$value,
+                                'cgn_Response_Value_Answer__c'=>'',
+                                'cgn_Insured_Detail__c'=>$sf_insured_id,
+                            );
+                            $sf_screning_result = $sforce->mapSforceLead($screening_data,'Screening_Question_Opportunity__c');
+                            
+                            if($sf_screning_result){
+                                if(sfdcErrors($sf_screning_result,'Screening_Question_Opportunity__c')){
+                                    db_update('screening_details')
+                                        ->fields(array(
+                                            'sf_opp_id' =>$sf_screning_result->id, 
+                                        ))
+                                       ->condition('sid',$sid)
+                                       ->condition('oid',$oid)
+                                       ->condition('application_id',$values['app_id'])
+                                       ->execute();
+                                }
+                            }
+                        }              
+                    }
+                }
+            }            
+        }
+    } 
+    
+    $quote_details=_plan_insured_total_premium($session_values['quote_no'],$values['app_id']);
+    
+   //dpr($quote_details);
+    if($quote_details){
+        
+        try{
+           $response_service=$product_conf->getQuote('compute',$quote_details);
+        }catch(Exception $e){
+            return 'Service Not available';
+        }
+    }
+    
+    //dpr($response_service);exit;
+    
+    $addon_premiums=db_select('quote_stored_addon','s')
+                ->fields('s',array('premium'))
+                ->condition('qid',$session_values['quote_no'])
+                ->condition('uid',$guestuser->uid)
+                ->execute()->fetchAll();
+     $add_total=0;      
+     foreach($addon_premiums as $premium){
+        
+            $add_total+=$premium->premium;
+      }          
+    
+    if($response_service){
+    
+    
+        db_update('get_quote')
+            ->fields(array(
+                'total_premium'=>(double)$response_service->return->listofquotationTO->totPremium + $add_total,
+            ))
+            ->condition('qid',$session_values['quote_no'])
+          ->execute();  
+    }
+      
+    // For Setting the redirect url to next insured person
+    $query=db_select('insured_data','i')
+                ->condition('i.application_id',$values['app_id'])
+                ->condition('i.ordering',$values['insured'],">")
+                ->fields('i',array('ordering'))
+                ->range(0,1)
+                ->orderBy('i.ordering','ASC');
+                
+    $insured_id=$query->execute()->fetchField();
+    if(!empty($insured_id)){
+        $form_state['redirect']='application/'.$values['app_id'].'/insured/'.$insured_id;
+    }else{
+        $form_state['redirect']='application/'.$values['app_id'].'/confirmation';   
+    }
+            
+}
+function complete_application_methods($form,$form_state){
+    
+     global $user,$sforce;
+     if(isset($_SESSION['guestuser'])){
+        $guestuser = $_SESSION['guestuser'];
+     }
+            
+       if(isset($_SESSION['quick_quote'])){
+        
+           // $result=quote_details($_SESSION['quick_quote']['initial_quote_no']);
+           
+            $quote_id=$_SESSION['quick_quote']['quote_no'];
+            $result=quote_details_by_id($quote_id);
+            
+            if(!empty($result)){
+                
+                $location=location_details($result['city_id']);
+                if(!empty($location)){
+                    $location_value=$location['city_name'];
+                    $zone_value=strtoupper($location['zone']);
+                }
+                $insuredDob=date('d/m/Y',$result['dob']);
+            }
+            
+            //send data to the SFDC.
+                $quote_lead=array(
+                    'LastName'=> isset($user->data['last_name']) ? $user->data['last_name'] : $guestuser->data['last_name'],
+                    'cgn_No_of_Adults__c' =>(int)$result['no_adults'],
+                    'cgn_No_of_Children__c' =>(int)$result['no_childs'],
+                    'cgn_Zone__c' => $zone_value,
+                    'cgn_Product_plan_option_SI_option__c' => $result['productPlanOptionCd'],
+                    'cgn_Quote_Amount__c' => (double)$result['total_premium'],
+                    'cgn_Web_Quote_Ref_Number__c' =>$result['initial_quote_no'],
+                    //'cgn_Sub_Plan_ID__c' =>$result['productId'],
+                    'cgn_Plan_ID__c' => $result['parentProductId'],
+                    'cgn_Product_line__c' => $result['productFamilyId'],
+                    'cgn_base_premium__c' => (double)$result['basepremium'],
+                    'cgn_Channel_Id__c' => $result['channelId'],
+                    'cgn_Agent_ID__c' => $result['agentId'],
+                    'cgn_Campaign_Code__c' => $result['campaignCd'],
+                    'cgn_Policy_Term__c' => $result['tenure'],
+                    //'cgn_Reminder_After_duration__c' => $session_response->reminder_duration,
+                    //'cgn_Total_Premium_Quote_Amount__c' => '',
+                    'cgn_Policy_Type__c' => $result['policyType'],
+                   // 'cgn_Product_Id__c' => $result['productId'],
+                    'cgn_Sum_Insured_Value__c' => $result['sum_insured'],
+                    'Status' =>'Partial',  
+                    'cgn_Lead_Fallout_Stage__c'=>'Final Quote',
+                );
+                $sf_quote_result = $sforce->mapSforcelead($quote_lead,'Lead');
+                
+               // dpr($sf_quote_id);exit;
+                
+                 if(sfdcErrors($sf_quote_result,'Lead')){
+                       $result = db_update('get_quote')
+                                ->fields(array(
+                                    'salesforce_id' => $sf_quote_result->id, 
+                                ))
+                                ->condition('qid',$_SESSION['quick_quote']['quote_no'])
+                                ->execute();
+                }
+                
+            // Inserting salesforce addon object with reference to lead id generated above.
+                
+            $quote_addon_details=quote_addon_details($_SESSION['quick_quote']['quote_no']);
+            
+            if($quote_addon_details){
+                
+                foreach($quote_addon_details  as $quote_addon_detail){
+                    
+                    $quote_addon=array(
+                        'cgn_Product_Id__c'=>substr($quote_addon_detail->productId,0,9),
+                        'cgn_Base_Premium__c'=>$quote_addon_detail->basePremium,
+                        'cgn_Product_Type_Code__c'=>'AddOn',
+                        'cgn_Lead__c'=>$sf_quote_id,
+                    );
+                    $sf_addon_result = $sforce->mapSforcelead($quote_addon,'cgn_Add_On__c');
+                        
+                        //dpr($sf_addon_id);exit;
+                    if(sfdcErrors($sf_addon_result,'cgn_Add_On__c')){
+                        
+                       $result = db_update('quote_addons')
+                                ->fields(array(
+                                    'sf_lead_id' => $sf_addon_result->id, 
+                                ))
+                                ->condition('qid',$_SESSION['quick_quote']['quote_no'])
+                                ->execute();
+                    }
+                }
+            }
+            
+            /*
+            // Inserting salesforce rider object with reference to lead id generated above.
+            $quote_ridder_details=quote_ridder_details($_SESSION['quick_quote']['initial_quote_no']);
+            
+            
+            if($quote_ridder_details){
+                
+                foreach($quote_ridder_details  as $quote_ridder_detail){
+                    
+                dpr($quote_ridder_detail);exit;           
+                    
+                    $quote_ridder=array(
+                        'cgn_Product_Id__c'=>$quote_ridder_detail->productId,
+                        'cgn_Base_Premium__c'=>$quote_ridder_detail->basePremium,
+                        'cgn_Product_Type_Code__c'=>'Rider',
+                        'cgn_Lead__c'=>$sf_quote_id,
+                    );
+                    $sf_ridder_id = $sforce->mapSforcelead($quote_ridder,'cgn_Rider__C');
+                    
+                    if($sf_ridder_id){
+                        
+                       $result = db_update('quote_ridders')
+                                ->fields(array(
+                                    'sf_rider_id' => $sf_ridder_id, 
+                                ))
+                                ->condition('initial_quote_no',$_SESSION['quick_quote']['initial_quote_no'])
+                                ->execute();
+                    }
+                }
+                
+            } */
+            // Inserting salesforce charge object with reference to lead id generated above.
+            $quote_charge_details=quote_charge_details($_SESSION['quick_quote']['quote_no']);
+            
+            if($quote_charge_details){
+                
+                foreach($quote_charge_details  as $quote_charge_detail){
+                
+                    $quote_charge=array(
+                        'cgn_Charge_Class__c'=>$quote_charge_detail->chargeClassCd,
+                        'cgn_Charge_Amount__c'=>(double)$quote_charge_detail->chargeAmount,
+                        'cgn_Charge_Percentage__c'=>(double)$quote_charge_detail->chargePercentage,
+                        'cgn_Lead__c'=>$sf_quote_id,
+                    );
+                    $sf_charge_result = $sforce->mapSforcelead($quote_charge,'Product_Charge_Lead__c');
+                    
+                    if(sfdcErrors($sf_charge_result,'Product_Charge_Lead__c')){
+                        
+                       $result = db_update('quotationchargedolist')
+                                ->fields(array(
+                                    'sf_lead_id' => $sf_charge_result->id, 
+                                ))
+                                ->condition('qid',$_SESSION['quick_quote']['quote_no'])
+                                ->execute();
+                    }
+                }
+            }    
+       }
+       
+       $form['proceed_at']=array(
+       
+            '#markup'=>'<div class="messagearea">
+                          <h1> <span>Hi '.(isset($user->data['first_name']) ? $user->data['first_name'] : $guestuser->data['first_name']).',</span> here\'s how you can complete your application<br />
+                            To purchase your plan you may use any of the following methods: </h1>
+                          <div class="blogsection">
+                            <div class="datdetails">
+                              <section>
+                                <h2>AT ONE GO</h2>
+                                <p>Enter personal and medical details of all being insured and complete the process in one go.</p>
+                                <div>'.l("PROCEED TO ADD DETAILS","application_details",array('attributes' => array('class' => array('linkbuttonclass')))).'</div>
+                              </section>
+                            </div>
+                            <div class="datdetails">
+                            <section>
+                                <h2>CONTINUE LATER</h2>
+                                <p>Want to do this later? <br />
+                                No problem. We\'ll remind you <br />
+                                after&nbsp;',
+       );
+       
+       $form['continue_later']=array(
+        
+            '#type'=>'select',
+            '#options'=>array(
+                1=> '1 Day',
+                2=> "2 Day's" ,
+                3=> "3 Day's",
+                4=> "4 Day's",
+                5=> "5 Day's",
+                6=> "6 Day's",
+                7=> "7 Day's",
+            ),
+            '#default_value'=>1,
+            '#suffix'=>'</p>',     
+       );
+       
+       $form['continue_later_submit']=array(
+            '#type'=>'submit',
+            '#value'=>'Continue later',
+            '#suffix'=>'</section></div>',
+       );
+       
+      $form['assisted_submit']=array(
+            '#type'=>'submit',
+            '#value'=>'Call me back',
+            '#prefix'=>'<div class="datdetails1">
+                            <section class="last">
+                            <h2>ASSISTED</h2>
+                            <p>We can call you back and help fill in the details. Our experts to guide you through this process.</p>',
+                            
+            '#suffix'=>'</section></div></div></div>',
+       );
+         
+       /*
+     $output = '';
+     $output.='<div class="messagearea">
+      <h1> <span>Hi '.$user->data['first_name']."&nbsp;&nbsp;".$user->data['last_name'].',</span> here\'s how you can complete your application<br />
+        To purchase your plan you may use any of the following methods: </h1>
+      <div class="blogsection">
+        <div class="datdetails">
+          <section>
+            <h2>AT ONE GO</h2>
+            <p>Enter personal and medical details of all being insured and complete the process in one go.</p>
+            <div>'.l("PROCEED TO ADD DETAILS","application_details",array('attributes' => array('class' => array('linkbuttonclass')))).'</div>
+          </section>
+        </div>
+        <div class="datdetails">
+          <section>
+            <h2>CONTINUE LATER</h2>
+            <p>Want to do this later? <br />
+              No problem. We\'ll remind you <br />
+              after&nbsp;
+              <select>
+                <option value="1">1</option>
+                <option value="2">2</option>
+                <option value="3">3</option>
+                <option value="4">4</option>
+              </select>
+              
+              </p>
+            <input type="button" name="conlater" id="conlater" value="Continue later">
+          </section>
+        </div>
+        <div class="datdetails1">
+          <section class="last">
+            <h2>ASSISTED</h2>
+            <p>We can call you back and help fill in the details. Our experts to guide you through this process.</p>
+            <input type="button" name="callback" id="callback" value="Call me back">
+          </section>
+        </div>
+      </div>
+    </div>';
+    return $output;*/
+    
+    return $form;
+} 
+ 
+function complete_application_methods_submit($form,$form_state){
+    
+    global $user;
+   
+    if(!$user->uid){
+        
+        if($_SESSION['guestuser']){
+            
+            $globaluser=$_SESSION['guestuser'];
+        }
+    }else{
+        $globaluser=$user;
+    }
+    $values=$form_state['values'];
+    if($values['op']=='Continue later'){
+        
+        //dpr($values);exit;
+        
+        $count=$values['continue_later'];
+        $current_date=date('Y-m-d');
+        
+        $send_date=date('Y-m-d', strtotime($current_date. ' + '.$count.' days'));
+        
+        db_insert('reminder')
+        ->fields(array(
+            'uid'=>$globaluser->uid,
+            'initial_quote_no'=>$_SESSION['quick_quote']['initial_quote_no'],
+            'qid'=>$_SESSION['quick_quote']['quote_no'],
+            //'from'=>'',
+            //'to'=>$globaluser->mail,
+            'send_date'=>$send_date,
+            'type'=>'email',
+        ))
+        ->execute();
+        
+        drupal_set_message('Thank You.You will get reminder after '.$count.'days','status');
+        
+        
+    }elseif($values['op']=='Call me back'){
+        
+        $quote_id=$_SESSION['quick_quote']['quote_no'];
+        $result=quote_details_by_id($quote_id);
+        
+        $application=db_insert("applications")
+            ->fields(array(
+                'status'=>'Partial',
+                'quote_id'=>$_SESSION['quick_quote']['quote_no'],
+                'title'=>$form_state['values']['title'],
+                'fname'=>$result['fname'],
+                'mname'=>$result['mname'],
+                'lname'=>$result['lname'],
+                'email'=>$result['email_id'],
+                'mobile'=>$result['phone'],
+                //'residence_number'=>$form_state['values']['residence_number'],
+               // 'office_number'=>$form_state['values']['office_number'],
+                'gender'=>$result['gender'],//$form_state['values']['gender'],
+                //'marital_status'=>$form_state['values']['marital_status'],
+                //'educational_qualification'=>$form_state['values']['educational_qualification'],
+                //'occupation'=>$form_state['values']['occupation'],
+               // 'annual_gross_income'=>$form_state['values']['gross_income'],
+                'no_adults'=>$result['no_adults'],
+                'no_childs'=>$result['no_childs'],
+                'dob'=>$result['dob'],
+                //'day'=>$form_state['values']['dob']['day'],
+                //'month'=>$form_state['values']['dob']['month'],
+                //'year'=>$form_state['values']['dob']['year'],
+                //'nationality'=>$form_state['values']['nationality'],
+               // 'permnt_address_line_1'=>$form_state['values']['permnt_address_line_1'],
+//                'permnt_address_line_2'=>$form_state['values']['permnt_address_line_2'],
+//                'permnt_city'=>$form_state['values']['permnt_city'],
+//                'permnt_district'=>$form_state['values']['permnt_town_district'],
+//                'permnt_state'=>$form_state['values']['permnt_state'],
+//                'permnt_pincode'=>$form_state['values']['permnt_pincode'],
+//                'corresp_address_line_1'=>$form_state['values']['corresp_address_line_1'],
+//                'corresp_address_line_2'=>$form_state['values']['corresp_address_line_2'],
+//                'corresp_city'=>$form_state['values']['corresp_city'],
+//                'corresp_district'=>$form_state['values']['corresp_town_district'],
+//                'corresp_state'=>$form_state['values']['corresp_state'],
+//                'corresp_pincode'=>$form_state['values']['corresp_pincode'],
+                  'created'=>time(),
+                  'modify'=>time(),
+                  'user_id'=> $globaluser->uid,
+            ))
+            ->execute();
+             
+            //$form_state['redirect']='application/'..'/proposer';
+    }
+}
+ 
+/**
+ * Application Form 
+ *
+ */
+function application_details_form($form,&$form_state){
+   
+   drupal_add_js(drupal_get_path('module','application').'/js/application.js');
+   
+   
+    if(isset($_SESSION['user_details'])){
+        
+        if(isset($_SESSION['user_details']['dob']) && !empty($_SESSION['user_details']['dob'])){
+            
+            $timestamp=$_SESSION['user_details']['dob'];
+            $year=(int)(date('Y',$timestamp));
+            $month=(int)(date('n',$timestamp));
+            $day=(int)(date('j',$timestamp));
+        }
+    }else{
+         $year=(int)(date('Y'));
+         $month=(int)(date('n'));
+         $day=(int)(date('j'));
+    }
+    
+    //validate_dob();
+    
+    global $user;
+    global $adult;
+    $arg = arg();
+    $appl_id = $arg['1'];
+    $result=db_select('applications','a')
+            ->fields('a')
+            //->condition('a.quote_id',$_SESSION['quick_quote']['quote_no'])
+            ->condition('a.app_id',$appl_id)
+            ->execute()->fetchAssoc();
+   
+    if(isset($result) && !empty($result)){
+        
+        $fname=$result['fname'];
+        $mname=$result['mname'];
+        $lname=$result['lname'];
+        $email=$result['email'];
+        $gender=$result['gender'];
+        $mobile=$result['mobile'];
+        $residence_number=$result['residence_number'];
+        $office_number=$result['office_number'];
+        $nationality=$result['nationality'];
+        $marital_status=$result['marital_status'];
+        $edu_qualification=$result['educational_qualification'];
+        $occupation=$result['occupation'];
+        $annual_gross_income=$result['annual_gross_income'];
+        $permnt_address_line_1=$result['permnt_address_line_1'];
+        $permnt_address_line_2=$result['permnt_address_line_2'];
+        $permnt_city=$result['permnt_city'];
+        $permnt_district=$result['permnt_district'];
+        $permnt_state=$result['permnt_state'];
+        $permnt_pincode=$result['permnt_pincode'];
+        $corresp_address_line_1=$result['corresp_address_line_1'];
+        $corresp_address_line_2=$result['corresp_address_line_2'];
+        $corresp_city=$result['corresp_city'];
+        $corresp_district = $result['corresp_district'];
+        $corresp_pincode=$result['corresp_pincode'];
+        $corresp_state=$result['corresp_state'];
+        
+        $day=$result['day'];
+        $month=$result['month'];
+        $year=$result['year'];
+        
+        
+        $dob=isset($result['dob']) && !empty($result['dob']) ? $result['dob'] : time();
+        $db_year=(int)(date('Y',$dob));
+        $db_month=(int)(date('n',$dob));
+        $db_day=(int)(date('j',$dob));
+    }
+    
+   if(!isset($permnt_city) && empty($permnt_city)){
+        
+        if(isset($_SESSION['quick_quote']))
+            $permnt_city=$_SESSION['quick_quote']['region'];
+            $perm_location=location_details($permnt_city);
+            if(!empty($perm_location)){
+                $perm_city_value=$perm_location['city_name'];
+                $perm_zone_value=strtoupper($perm_location['zone']);
+            }
+   }else{
+        $perm_city_value = $permnt_city;
+   }
+    
+   if(!isset($corresp_city) && empty($corresp_city)){
+        
+        if(isset($_SESSION['quick_quote']))
+            $corresp_city=$_SESSION['quick_quote']['region'];
+            $corsp_location=location_details($corresp_city);
+            if(!empty($corsp_location)){
+                $corsp_city_value=$corsp_location['city_name'];
+                $corsp_zone_value=strtoupper($corsp_location['zone']);
+            }
+   }else{
+        $corsp_city_value = $corresp_city;
+   }
+    if(isset($_SESSION['user_details'])){
+        
+        $values=$_SESSION['user_details'];    
+        
+    }
+    if(isset($_SESSION['guestuser'])){
+        
+        $guestuser=$_SESSION['guestuser'];   
+        
+    }
+	$form['some_text'] = array(
+  		'#markup' => '<div class="proposerdetails relateform">'
+	);
+	
+	
+	$form['location_label']=array(
+  
+  			'#markup'=>'<label>Title</label>',	
+			'#prefix'=>'<div class="formdata">',
+  );
+  
+  $form['select_title']=array(
+        //'#title'=>'Location',
+        '#type'=>'select',
+        '#options' => array( 'Mr' => 'Mr','Mrs' => 'Mrs','Ms' => 'Ms'),
+       // '#default_value' => $quote_region,
+        '#prefix'=>'<div class="loginiconselect"> <span class="css3-selectbox">',
+		'#suffix'=>'</span></div></div>',
+        
+        /*
+        '#attributes'=>array(
+            'class'=>array('loginiconselect'),
+        ),*/
+        //'#required' => TRUE,
+   );
+	
+  
+    $form['first_name'] = array(
+        '#type' => 'textfield',
+        '#title' => t('First Name'),
+        '#size' => 28,
+		'#prefix' => '<div class="formdata">',
+  		'#suffix' => '</div>',
+  		'#tree' => TRUE,
+        //'#required' => TRUE,
+        //'#default_value' => isset($values) ?  isset($values['fname']) : '' ?  $values['fname'] : '',
+      // '#default_value' => $user->first_name,
+       '#default_value' =>!empty($fname) ? $fname : (!empty($user->data['first_name']) ? $user->data['first_name'] : $guestuser->data['first_name']),
+    );
+    $form['middle_name'] = array(
+        '#type' => 'textfield',
+        '#title' => t('Middle Name'),
+        '#size' => 28,
+		'#prefix' => '<div class="formdata">',
+  		'#suffix' => '</div>',
+  		'#tree' => TRUE,
+        //'#required' => TRUE,
+         //'#default_value' => isset($values) ?  isset($values['lname']) : '' ?  $values['lname'] : '',
+         //'#default_value' => $user->last_name,
+         '#default_value' =>isset($mname) ? $mname : (isset($values['mname']) ? $values['mname'] :''),
+        
+    );
+    $form['last_name'] = array(
+        '#type' => 'textfield',
+        '#title' => t('Last Name'),
+        '#size' => 28,
+		'#prefix' => '<div class="formdata">',
+  		'#suffix' => '</div>',
+  		'#tree' => TRUE,
+        //'#required' => TRUE,
+         //'#default_value' => isset($values) ?  isset($values['lname']) : '' ?  $values['lname'] : '',
+         //'#default_value' => $user->last_name,
+         '#default_value' =>!empty($lname) ? $lname : (!empty($user->data['last_name']) ? $user->data['last_name'] : $guestuser->data['last_name']),
+        
+    );
+    $form['email'] = array(
+        '#type' => 'textfield',
+        '#title' => 'E-mail',
+		'#prefix' => '<div class="formdata">',
+  		'#suffix' => '</div>',
+  		'#tree' => TRUE,		
+        //'#required' => TRUE,
+        '#size'=>28,
+         //'#default_value' => isset($values) ?  isset($values['email_id']) : '' ?  $values['email_id'] : '',
+         //'#default_value' => $user->mail,
+         '#default_value' =>isset($email) ? $email : (isset($user->mail) ? $user->mail : $guestuser->mail),
+    );
+    $active = array( 0=> t('Male'), 1=> t('Female'));
+    
+  /*$form['gender']=array(
+        '#type'=>'item',
+        '#title'=>t('Gender'),
+        '#markup'=>'<div id="radio" class="radio">
+                    <input type="radio" id="male" name="gender" value=0 checked="checked"/><label for="male">Male</label>
+                     <input type="radio" id="female" name="gender" value=1 /><label for="female">Female</label>
+                    </div>',
+        '#prefix'=>'<div class="formdata">',
+        '#suffix'=>'</div>'
+    );*/
+    $form['gender'] = array(
+        '#type' => 'radios',
+        '#title' => t('Gender'),
+        '#options' => $active,
+        '#required' => TRUE,
+        '#default_value'=> isset($gender) ? $gender : 0,
+        '#prefix' => '<div class="formdata">',
+  		'#suffix' => '</div>',
+  		'#tree' => TRUE,
+    );
+    $form['dob'] = array(
+        '#type' => 'date',
+        //'#title' => 'Birthday',
+        '#required' => TRUE,
+        '#default_value'=>array(
+            'year'=>isset($db_year) ? $db_year : $year,
+            'month'=>isset($db_month) ? $db_month : $month,
+            'day'=>isset($db_day) ? $db_day : $day,
+        ),
+		   '#prefix'=>'<div class="formdata"><label>Birthday</label><div class="dataofbirth">',
+            '#suffix'=>'</div></div>'
+    );
+    /*
+    $form['dob_month'] = array(
+        '#type' => 'select',
+        '#title' => 'Date Of Birth',
+        '#options' => $adult['months'],
+        '#default_value' => (isset($db_month) && !empty($db_month) )? $db_month : $adult['month'],
+    );
+    $form['dob_day'] = array(
+        '#type' => 'select',
+        '#options' => $adult['days'],
+        '#default_value' => (isset($db_day) && !empty($db_day) )? $db_day : $adult['day'],
+    );
+    $form['dob_year'] = array(
+        '#type' => 'select',
+        '#options' => $adult['years'],
+        '#default_value' => (isset($db_year) && !empty($db_year) )? $db_year : $adult['year'],
+    );*/
+    $form['phone_number'] = array(
+        '#type' => 'textfield',
+        '#title' => t('Mobile No.<br/>'),
+        '#size'=>28,
+        '#maxlength'=>10,
+        '#default_value' => isset($mobile) ?  isset($mobile) : '' ?  $mobile : (isset($user->data['mobile_no']) ? $user->data['mobile_no'] : (isset($guestuser->data['mobile_no']) ? $guestuser->data['mobile_no'] : $_SESSION['mobile_no'])),
+        //'#required' => TRUE,
+		'#prefix' => '<div class="formdata">',
+  		'#suffix' => '</div>',
+  		'#tree' => TRUE,		
+    );
+    $form['residence_number'] = array(
+        '#type' => 'textfield',
+        '#title' => t('Residence No.<br/>'),
+        '#size'=>28,
+        '#maxlength'=>10,
+        '#default_value' => isset($residence_number) ? $residence_number : '',
+        //'#required' => TRUE,
+		'#prefix' => '<div class="formdata">',
+  		'#suffix' => '</div>',
+  		'#tree' => TRUE,		
+    );
+    $form['office_number'] = array(
+        '#type' => 'textfield',
+        '#title' => t('Office No.'),
+        '#size'=>28,
+        '#maxlength'=>10,
+        '#default_value' => isset($office_number) ? $office_number : '',//isset($values) ?  isset($values['residence_number']) : '' ?  $values['residence_number'] : '',
+        //'#required' => TRUE,
+		'#prefix' => '<div class="formdata">',
+  		'#suffix' => '</div>',
+  		'#tree' => TRUE,		
+    );
+	
+	
+	
+
+	
+	
+	$form['marital_label']=array(
+  
+  			'#markup'=>'<label>Marital Status</label>',	
+			'#prefix'=>'<div class="formdata">',
+  );
+	
+    $form['marital_status'] = array(
+        '#type' => 'select',
+        //'#title' => 'Marital Status',
+        '#options' => array( 'single' => 'Single','married' => 'Married','divorced' => 'Divorced','widow ' => 'Widow(er) ','separated' => 'Separated'),
+        '#default_value' => isset($marital_status) ? $marital_status :'',
+		'#prefix'=>'<div class="loginiconselect"> <span class="css3-selectbox">',
+  		'#suffix' => '</span></div></div>',	
+    );
+	
+	
+	
+	$form['educational_label']=array(
+  
+  			'#markup'=>'<label>Educational Qualification</label>',	
+			'#prefix'=>'<div class="formdata">',
+  	);
+	
+    $form['educational_qualification'] = array(
+        '#type' => 'select',
+        //'#title' => 'Educational Qualification',
+        '#options' => array( 'ssc' => 'SSC','hsc' => 'HSC','graduate' => 'Graduate','post-graduate' => 'Post Graduate','professional-course' => 'Professional Course',),
+        '#default_value' => isset($edu_qualification) ? $edu_qualification : '',
+		'#prefix'=>'<div class="loginiconselect"> <span class="css3-selectbox">',
+  		'#suffix' => '</span></div></div>',
+  		//'#tree' => TRUE,		
+    );
+    /*$form['customer_type'] = array(
+        '#type' => 'select',
+        '#title' => 'Customer Type',
+        '#options' => array( 'proposer' => 'Proposer','insured' => 'Insured')
+    );*/
+	
+	
+	$form['occupation_label']=array(
+  
+  			'#markup'=>'<label>Occupation</label>',	
+			'#prefix'=>'<div class="formdata">',
+  	);
+	
+    $form['occupation'] = array(
+        '#type' => 'select',
+        //'#title' => 'Occupation',
+        '#options' => array( 'SALARIED' => 'Salaried','BUSINESSOWNER' => 'Business Owner','PROFESSIONAL'=> 'Professional','SELFEMPLOYED' => 'Self Employed',
+        'STUDENT'=>'Student','HOUSEWIFE' => 'Housewife','RETIRED '=> 'Retired','OTHERS'=>'Others','GOVERNMENTEMPLOYED'=>'Government Employed','PRIVATESERVICE'=>'Private Service'),
+		
+        //'#options' => array( 'government-employed' => 'Government Employed','private-service' => 'Private Service','self-employed'=> 'Self Employed','student' => 'Student','housewife' => 'Housewife','retired '=> 'Retired','others'=>'Others'),
+        '#default_value' => isset($occupation) ? $occupation :'',
+		'#prefix'=>'<div class="loginiconselect"> <span class="css3-selectbox">',
+  		'#suffix' => '</span></div></div>',	
+    );
+	
+	
+	
+	$form['gross_label']=array(
+  
+  			'#markup'=>'<label>Annual Gross Income (in Rs.)</label>',	
+			'#prefix'=>'<div class="formdata">',
+  	);
+    $form['gross_income'] = array(
+        '#type' => 'select',
+        //'#title' => 'Annual Gross Income (in Rs.)',
+        '#options' => array( '200000' => '2L','500000' => '2-5 L','1000000'=> '5-10L','2000000' => '10-20L'),
+        '#required' => TRUE,
+        '#default_value' => isset($annual_gross_income) ? $annual_gross_income : '',
+		'#prefix'=>'<div class="loginiconselect"> <span class="css3-selectbox">',
+  		'#suffix' => '</span></div></div>',		
+    ); 
+    /*$form['unique_personal_identifier'] = array(
+        '#type' => 'select',
+        '#title' => 'Personal Identification Type Code',
+        '#options' => array( '1' => 'PAN Number','2' => 'AADHAR (UID)/National ID','3'=> 'National Population Register','4' => 'Bank Account Number','5' => 'Voter ID card','6' => 'Driving License Number','7' => 'Passport Number','8' => 'Ration Card Number','99'=> 'Other'),
+        '#required' => TRUE,
+    );*/
+	
+	
+	
+	$form['nationality_label']=array(
+  
+  			'#markup'=>'<label>Nationality</label>',	
+			'#prefix'=>'<div class="formdata">',
+  	);
+    $form['nationality'] = array(
+        '#type' => 'select',
+       // '#title' => 'Nationality',
+        '#options' => array('indian'=>'Indian','nri'=>'NRI','other' => 'Others'),
+        '#required' => TRUE,
+        '#default_value' => isset($nationality) ?  $nationality : 'indian',
+		'#prefix'=>'<div class="loginiconselect"> <span class="css3-selectbox">',
+  		'#suffix' => '</span></div></div>',		
+        
+    );
+	$form['permanent_address']=array(
+  
+  			'#markup'=>'<label><b>Permanent Address</b></label>',	
+			'#prefix'=>'<div class="formdata">',
+			'#suffix'=>'</div>'		
+  	);
+    $form['permnt_address_line_1'] = array(
+        '#type' => 'textfield',
+        '#title' => 'Address 1',
+        '#required' => TRUE,
+        '#size' => 28,
+        '#default_value'=>isset($permnt_address_line_1) ? $permnt_address_line_1 : '',
+		'#prefix' => '<div class="formdata">',
+  		'#suffix' => '</div>',
+  		'#tree' => TRUE,        
+        
+    );
+    $form['permnt_address_line_2'] = array(
+        '#type' => 'textfield',
+        '#title' => 'Address 2',
+        '#size' => 28,
+        '#default_value'=>isset($permnt_address_line_2) ? $permnt_address_line_2 : '',
+		'#prefix' => '<div class="formdata">',
+  		'#suffix' => '</div>',
+  		'#tree' => TRUE,		
+    );
+    $form['permnt_city'] = array(
+        '#type' => 'textfield',
+        '#title' => 'City',
+       '#size' => 28,
+        '#required' => TRUE,
+        '#default_value'=> isset($perm_city_value) ? $perm_city_value : '', 
+		'#prefix' => '<div class="formdata">',
+  		'#suffix' => '</div>',
+  		'#tree' => TRUE,		
+        
+    );
+    $form['permnt_town_district'] = array(
+        '#type' => 'textfield',
+        '#title' => 'Town/District',
+       '#size' => 28,
+        '#default_value'=> isset($permnt_district) ? $permnt_district : '',
+		'#prefix' => '<div class="formdata">',
+  		'#suffix' => '</div>',
+  		'#tree' => TRUE,		
+    );
+    $form['permnt_state'] = array(
+        '#type' => 'textfield',
+        '#title' => 'State',
+        '#size' => 28,
+         '#default_value'=> isset($permnt_state) ? $permnt_state : '',
+		'#prefix' => '<div class="formdata">',
+  		'#suffix' => '</div>',
+  		'#tree' => TRUE,		 
+    );
+    $form['permnt_pincode'] = array(
+        '#type' => 'textfield',
+        '#title' => 'Pincode',
+        '#size' => 28,
+        '#default_value'=>isset($permnt_pincode) ? $permnt_pincode : '',
+        '#required' => TRUE,
+		'#prefix' => '<div class="formdata">',
+  		'#suffix' => '</div>',
+  		'#tree' => TRUE,		
+    );
+  //  $form['same_as'] = array(
+//        '#type' => 'checkbox',
+//        '#title' => 'Same as permanent address',
+//		'#prefix' => '<div class="formdata">',
+//  		'#suffix' => '</div>',
+//  		'#tree' => TRUE,		
+//    );
+	$form['same_as']=array(
+        '#type'=>'item',
+        //'#title'=>t('Gender'),
+        '#markup'=>'<input type="checkbox" id="c1" name="same_as" />
+              <label for="c1"><span></span>Same as permanent address</label>',
+        '#prefix'=>'<div class="formdata">',
+        '#suffix'=>'</div>'
+    );
+	$form['corresp_address']=array(
+  
+  			'#markup'=>'<label><b>Correspondence Address</b></label>',	
+			'#prefix'=>'<div class="formdata">',
+			'#suffix'=>'</div>'		
+  	);
+    $form['corresp_address_line_1'] = array(
+        '#type' => 'textfield',
+        '#title' => 'Address 1',
+        '#size' => 28,
+       // '#required' => TRUE,
+        '#default_value'=>isset($corresp_address_line_1) ? $corresp_address_line_1 : '',
+	'#prefix' => '<div class="formdata">',
+  		'#suffix' => '</div>',
+  		'#tree' => TRUE,				
+    );
+    $form['corresp_address_line_2'] = array(
+        '#type' => 'textfield',
+        '#title' => 'Address 2',
+        '#size' => 28,
+        '#default_value'=>isset($corresp_address_line_2) ? $corresp_address_line_2 : '',
+	    '#prefix' => '<div class="formdata">',
+  		'#suffix' => '</div>',
+  		'#tree' => TRUE,				
+    );
+    $form['corresp_city'] = array(
+        '#type' => 'textfield',
+        '#title' => 'City',
+        '#size' => 28,
+        '#default_value'=> isset($corsp_city_value) ? $corsp_city_value : '', 
+	    '#prefix' => '<div class="formdata">',
+  		'#suffix' => '</div>',
+  		'#tree' => TRUE,				
+    );
+    $form['corresp_town_district'] = array(
+        '#type' => 'textfield',
+        '#title' => 'Town/District',
+        '#size' => 28,
+        '#default_value'=> isset($corresp_district) ? $corresp_district : '', 
+	    '#prefix' => '<div class="formdata">',
+  		'#suffix' => '</div>',
+  		'#tree' => TRUE,				
+    );
+    $form['corresp_state'] = array(
+        '#type' => 'textfield',
+        '#title' => 'State',
+        '#size' => 28,
+        '#default_value'=> isset($corresp_state) ? $corresp_state : '', 
+	    '#prefix' => '<div class="formdata">',
+  		'#suffix' => '</div>',
+  		'#tree' => TRUE,				
+    );
+    $form['corresp_pincode'] = array(
+        '#type' => 'textfield',
+        '#title' => 'Pincode',
+        '#size' => 28,
+        '#default_value'=>isset($corresp_pincode) ? $corresp_pincode : '',
+        //'#required' => TRUE,
+	    '#prefix' => '<div class="formdata">',
+  		'#suffix' => '</div>',
+  		'#tree' => TRUE,				
+    );
+    $form['submit'] = array(
+        '#type' => 'submit',
+        '#value' => t('Proceed')
+    );
+	$form['some_text1'] = array(
+  		'#markup' => '</div>'
+	);
+    return $form;    
+}
+
+/**
+ * Implements hook_validate()
+ * 
+ */
+function application_details_form_validate($form,&$form_state){
+   
+   
+  // dpr($form_state['values']);exit;
+   
+    $values=$form_state['values'];
+    if(empty($values['first_name']) || !ctype_alpha($values['first_name'])){
+        form_set_error($form_state['values']['first_name'],'First name contains empty/invalid characters.');
+        
+    }elseif(empty($values['last_name']) || !ctype_alpha($values['last_name'])){
+        form_set_error($form_state['values']['first_name'],'Last name contains empty/invalid characters.');
+                   
+    }elseif(validate_email($values['email'])){ 
+        
+        form_set_error($form_state['values']['email'],'Invalid Email address');   
+        
+    }elseif(empty($values['phone_number']) || !ctype_digit($values['phone_number']) || validate_phone_number($values['phone_number'])){ 
+        
+        form_set_error($form_state['values']['phone_number'],'Phone number contains empty/invalid characters.');
+        
+    }elseif(empty($values['permnt_pincode']) || !ctype_digit($values['permnt_pincode'])){
+        
+        form_set_error($form_state['values']['permnt_pincode'],'Permanent Pincode contains empty/invalid characters.');
+    }elseif(empty($values['corresp_pincode']) || !ctype_digit($values['corresp_pincode'])){
+        
+        form_set_error($form_state['values']['corresp_pincode'],'Correspondence Pincode contains empty/invalid characters.');
+    }
+       
+}
+/**
+ * 
+ * Implements hook_submit()
+ * 
+ */
+function application_details_form_submit($form, &$form_state){
+
+    //dpr($_SESSION);exit;
+    //dpr($form_state['values']['dob']['year']);exit;
+     global $user;
+     global $sforce;
+     if(isset($_SESSION['guestuser'])){
+        $guestuser = $_SESSION['guestuser'];
+     }
+     $userid = (isset($user->uid) ? $user->uid : $guestuser->uid);
+    //$user_exist = user_load_by_name($form_state['values']['email']);
+    if($userid){
+        $account = user_load($userid);
+        $edit = (array) $account;
+        $edit=array(
+            'data'=>array(
+                'first_name'=>$form_state['values']['first_name'],
+                'last_name'=>$form_state['values']['last_name'],
+                'mobile_no'=> $form_state['values']['phone_number'],
+            ),
+        );
+        $user = user_save($account,$edit);
+    }
+    //$_SESSION['mobile_no'] = $form_state['values']['mobile'];
+    $_SESSION['user_details']['first_name'] = $form_state['values']['first_name'];
+    $_SESSION['user_details']['last_name'] = $form_state['values']['last_name'];
+    $values=$_SESSION['quick_quote'];
+    if(isset($_SESSION['guestuser'])){
+        $guestuser = $_SESSION['guestuser'];
+    }
+    
+    
+    $month=$form_state['values']['dob']['month'];
+    $day=$form_state['values']['dob']['day'];
+    $year=$form_state['values']['dob']['year'];
+   // $month=$form_state['values']['dob_month'];
+   // $day=$form_state['values']['dob_day'];
+   // $year=$form_state['values']['dob_year'];
+    
+    $dob=strtotime("$day-$month-$year");
+    
+    
+    $quote_no=$_SESSION['quick_quote']['quote_no'];
+    
+    $query=db_select('applications','a')
+                ->fields('a',array('app_id'))
+                ->condition('a.quote_id',$quote_no)
+                ->execute()->fetchField();
+    $sf_id=db_select('applications','a')
+                ->fields('a',array('sf_id'))
+                ->condition('a.quote_id',$quote_no)
+                ->execute()->fetchField();
+    
+    if(empty($query)){
+      
+        $application=db_insert("applications")
+            ->fields(array(
+                'status'=>'Partial',
+                'quote_id'=>$_SESSION['quick_quote']['quote_no'],
+                'title'=>$form_state['values']['title'],
+                'fname'=>$form_state['values']['first_name'],
+                'mname'=>$form_state['values']['middle_name'],
+                'lname'=>$form_state['values']['last_name'],
+                'email'=>$form_state['values']['email'],
+                'mobile'=>$form_state['values']['phone_number'],
+                'residence_number'=>$form_state['values']['residence_number'],
+                'office_number'=>$form_state['values']['office_number'],
+                'gender'=>$form_state['values']['gender'],
+                'marital_status'=>$form_state['values']['marital_status'],
+                'educational_qualification'=>$form_state['values']['educational_qualification'],
+                'occupation'=>$form_state['values']['occupation'],
+                'annual_gross_income'=>$form_state['values']['gross_income'],
+                'no_adults'=>$values['no_adults'],
+                'no_childs'=>$values['no_childs'],
+                'dob'=>$dob,
+                'day'=>$form_state['values']['dob']['day'],
+                'month'=>$form_state['values']['dob']['month'],
+                'year'=>$form_state['values']['dob']['year'],
+                'nationality'=>$form_state['values']['nationality'],
+                'permnt_address_line_1'=>$form_state['values']['permnt_address_line_1'],
+                'permnt_address_line_2'=>$form_state['values']['permnt_address_line_2'],
+                'permnt_city'=>$form_state['values']['permnt_city'],
+                'permnt_district'=>$form_state['values']['permnt_town_district'],
+                'permnt_state'=>$form_state['values']['permnt_state'],
+                'permnt_pincode'=>$form_state['values']['permnt_pincode'],
+                'corresp_address_line_1'=>$form_state['values']['corresp_address_line_1'],
+                'corresp_address_line_2'=>$form_state['values']['corresp_address_line_2'],
+                'corresp_city'=>$form_state['values']['corresp_city'],
+                'corresp_district'=>$form_state['values']['corresp_town_district'],
+                'corresp_state'=>$form_state['values']['corresp_state'],
+                'corresp_pincode'=>$form_state['values']['corresp_pincode'],
+                'created'=>time(),
+                'modify'=>time(),
+                'user_id'=> (isset($user->uid) ? $user->uid : $guestuser->uid),
+            ))
+            ->execute();
+            //echo $application;die;
+          if($application){
+            
+            if(isset($_SESSION['quick_quote'])){
+        
+            //$result=quote_details($_SESSION['quick_quote']['initial_quote_no']);
+            $quote_id=$_SESSION['quick_quote']['quote_no'];
+            $result=quote_details_by_id($quote_id);
+            
+            if(!empty($result)){
+                
+                $location=location_details($result['city_id']);
+                if(!empty($location)){
+                    $location_value=$location['city_name'];
+                    $zone_value=strtoupper($location['zone']);
+                }
+                $insuredDob=date('d/m/Y',$result['dob']);
+            }
+            
+            //send data to the SFDC.
+                $quote_lead=array(
+                    'cgn_No_of_Adults__c' =>(int)$result['no_adults'],
+                    'cgn_No_of_Children__c' =>(int)$result['no_childs'],
+                    'cgn_Zone__c' => $zone_value,
+                    'cgn_Product_plan_option_SI_option__c' => $result['productPlanOptionCd'],
+                    'cgn_Quote_Amount__c' => (double)$result['total_premium'],
+                    'cgn_Web_Quote_Ref_Number__c' =>$result['initial_quote_no'],
+                    //'cgn_Sub_Plan_ID__c' =>$result['productId'],
+                    'cgn_Plan_ID__c' => $result['parentProductId'],
+                    'cgn_Product_line__c' => $result['productFamilyId'],
+                    'cgn_base_premium__c' => (double)$result['basepremium'],
+                    'cgn_Channel_Id__c' => $result['channelId'],
+                    'cgn_Agent_ID__c' => $result['agentId'],
+                    'cgn_Campaign_Code__c' => $result['campaignCd'],
+                    'cgn_Policy_Term__c' => $result['tenure'],
+
+                    'cgn_Policy_Type__c' => $result['policyType'],
+                    //'cgn_Product_Id__c' => $result['productId'],
+                    'cgn_Sum_Insured_Value__c' => $result['sum_insured'],
+                    //'opprtunity' => 'data',
+                    'Name'=>$form_state['values']['first_name'],
+                    'StageName'=>'Prospecting',
+                    'CloseDate'=>"2013-07-20",
+                    'cgn_Proposer_Title__c' =>$form_state['values']['title'],
+                    'cgn_Proposer_First_Name__c' => $form_state['values']['first_name'],
+                    'cgn_Proposer_Middle_Name__c' => $form_state['values']['middle_name'],
+                    'cgn_Proposer_Last_Name__c' => $form_state['values']['last_name'],
+                    'cgn_Proposer_Gender__c'=> $form_state['values']['gender'],
+                    'cgn_Proposer_DOB__c' => date('Y-m-d',$dob),
+                    'cgn_Communication_Address_Line_1__c' => $form_state['values']['corresp_address_line_1'],
+                    'cgn_Communication_Address_Line_2__c' => $form_state['values']['corresp_address_line_2'],
+                    //'cgn_Communication_Address_Landmark__c' => '',
+                    'cgn_Communication_Address_City__c' => $form_state['values']['corresp_city'],
+                    'cgn_Communication_Address_State__c' => $form_state['values']['corresp_state'],
+                    'cgn_Communication_Address_DIstrict__c' => $form_state['values']['corresp_town_district'],
+                    'cgn_Communication_Address_Pincode__c' => $form_state['values']['corresp_pincode'],
+                    'cgn_Permanent_Address_Line_1__c' => $form_state['values']['permnt_address_line_1'],
+                    'cgn_Permanent_Address_Line_2__c' => $form_state['values']['permnt_address_line_2'],
+                    //'cgn_Permanent_Address_Landmark__c' => '',
+                    'cgn_Permanent_Address_City__c' => $form_state['values']['permnt_city'],
+                    'cgn_Permanent_Address_State__c' => $form_state['values']['permnt_state'],
+                    'cgn_Permanent_Address_District__c' => $form_state['values']['permnt_town_district'],
+                    'cgn_Permanent_Address_Pincode__c' => $form_state['values']['permnt_pincode'],
+                    'cgn_Marital_Status__c' => $form_state['values']['marital_status'],
+                    'cgn_Nationality__c' => $form_state['values']['nationality'],
+                    'cgn_Contact_Number__c' => $form_state['values']['phone_number'],
+                    'cgn_Educational_Qualification__c' => $form_state['values']['educational_qualification'],
+                    'cgn_Email_Address__c' => $form_state['values']['email'],
+                    'cgn_Annual_Gross_Income_in_Rs__c' => $form_state['values']['gross_income'],
+                    'cgn_Occupation__c'=> $form_state['values']['occupation'],
+                    
+                    //'cgn_Proposal_Number__c'=> '',
+                    //'cgn_Policy_Start_Date__c'=> '',
+                    //'cgn_Policy_End_Date__c'=> '',
+                   
+                );
+                $sf_result = $sforce->mapSforceLead($quote_lead,'Opportunity');
+                // update sf_id against application add.
+                if(sfdcErrors($sf_result,'Opportunity')){
+                    db_update('applications')
+                        ->fields(array(
+                            'sf_id' =>$sf_result->id, 
+                        ))
+                        ->condition('app_id',$application)
+                        ->execute(); 
+                }   
+                
+            // Inserting salesforce addon object with reference to lead id generated above.
+                
+            $quote_addon_details=quote_addon_details($_SESSION['quick_quote']['quote_no']);
+            
+            if($quote_addon_details){
+                
+                foreach($quote_addon_details  as $quote_addon_detail){
+                    
+                    
+                    $quote_addon=array(
+                        'cgn_Product_Id__c'=>substr($quote_addon_detail->productId,0,9),
+                        'cgn_Base_Premium__c'=>$quote_addon_detail->basePremium,
+                        'cgn_Product_Type_Code__c'=>'AddOn',
+                        //'cgn_Opportunity__c'=>$sf_result->id,
+                    );
+                    $sf_addon_result = $sforce->mapSforcelead($quote_addon,'cgn_Add_On__c');
+                    
+                    if(sfdcErrors($sf_addon_result,'cgn_Add_On__c')){
+                        
+                       $result = db_update('quote_addons')
+                                ->fields(array(
+                                    'sf_opp_id' => $sf_addon_result->id, 
+                                ))
+                                ->condition('qid',$_SESSION['quick_quote']['quote_no'])
+                                ->execute();
+                    }
+                }
+            }
+            /*
+            
+            // Inserting salesforce rider object with reference to lead id generated above.
+            $quote_ridder_details=quote_ridder_details($_SESSION['quick_quote']['initial_quote_no']);
+            
+            
+            if($quote_ridder_details){
+                
+                foreach($quote_ridder_details  as $quote_ridder_detail){
+                    
+                dpr($quote_ridder_detail);exit;           
+                    
+                    $quote_ridder=array(
+                        'cgn_Product_Id__c'=>$quote_ridder_detail->productId,
+                        'cgn_Base_Premium__c'=>$quote_ridder_detail->basePremium,
+                        'cgn_Product_Type_Code__c'=>'Rider',
+                        'cgn_Opportunity__c'=>$sf_id,
+                    );
+                    $sf_ridder_id = $sforce->mapSforcelead($quote_ridder,'cgn_Rider__C');
+                    
+                    if($sf_ridder_id){
+                        
+                       $result = db_update('quote_ridders')
+                                ->fields(array(
+                                    'sf_opp_id' => $sf_ridder_id, 
+                                ))
+                                ->condition('initial_quote_no',$_SESSION['quick_quote']['initial_quote_no'])
+                                ->execute();
+                    }
+                }
+                
+            } */
+             $quote_charge_details=quote_charge_details($_SESSION['quick_quote']['quote_no']);
+            
+            if($quote_charge_details){
+                
+                foreach($quote_charge_details  as $quote_charge_detail){
+                
+                    $quote_charge=array(
+                        'cgn_Charge_Class__c'=>$quote_charge_detail->chargeClassCd,
+                        'cgn_Charge_Amount__c'=>(double)$quote_charge_detail->chargeAmount,
+                        'cgn_Charge_Percentage__c'=>(double)$quote_charge_detail->chargePercentage,
+                        //'cgn_Opportunity__c'=>$sf_result->id,
+                    );
+                    $sf_charge_result = $sforce->mapSforcelead($quote_charge,'Product_Charge_Lead__c');
+                    if(sfdcErrors($sf_charge_result,'Product_Charge_Lead__c')){
+                        
+                       $result = db_update('quotationchargedolist')
+                                ->fields(array(
+                                    'sf_opp_id' => $sf_charge_result->id, 
+                                ))
+                                ->condition('qid',$_SESSION['quick_quote']['quote_no'])
+                                ->execute();
+                    }
+                }
+            }
+       }           
+            
+              db_update('get_quote')
+                ->fields(array(
+                    'status'=>0,
+                ))        
+                ->condition('qid',$_SESSION['quick_quote']['quote_no'])
+                ->execute();  
+          }
+     
+        for($i=1,$j=1;$i<=($values['no_adults'] + $values['no_childs']);$i++){
+        
+            if($i<=$values['no_adults']){
+                
+                 $stp_data=db_select('get_quote_people_details','p')
+                            ->fields('p')
+                            ->condition('p.sub_ordering',$i)
+                            ->condition('p.quote_id',$_SESSION['quick_quote']['quote_no'])
+                            ->execute()->fetchAssoc();
+                            
+                if($i==1){
+                    
+                    $result=db_insert("insured_data")
+                    ->fields(array(
+                    'application_id'=>$application,
+                    'uid'=>(isset($user->uid) ? $user->uid : $guestuser->uid),
+                    'title'=>$form_state['values']['title'],                    
+                    'first_name'=>$form_state['values']['first_name'],
+                    'middle_name'=>$form_state['values']['middle_name'],
+                    'last_name'=>$form_state['values']['last_name'],
+                    'gender'=>$form_state['values']['gender'],
+                    'occupation'=>$form_state['values']['occupation'],
+                    'annual_income'=>$form_state['values']['gross_income'],                                        
+                    'ordering'=>$i,
+                    'people_type'=>'adult',
+                    'sub_ordering'=>$i,
+                    'dob'=>$dob,
+                    'day'=>$form_state['values']['dob']['day'],
+                    'month'=>$form_state['values']['dob']['month'],
+                    'year'=>$form_state['values']['dob']['year'],
+                    'city'=>$form_state['values']['corresp_city'],
+                    'pincode'=>$form_state['values']['corresp_pincode'],
+                    'tobacco'=>$stp_data['tobacco'],
+                    'alcohol'=>$stp_data['alcohol'],
+                    'cigarette'=>$stp_data['cigarette'],
+                    'tobacco_consumption'=>$stp_data['tobacco_consumption'],
+                    'alcohol_consumption'=>$stp_data['alcohol_consumption'],
+                    'cigarette_consumption'=>$stp_data['cigarette_consumption'],
+                                                            
+                ))
+                ->execute();
+                    // insert insured details
+                    $insured_data = array(
+                        'cgn_Title__c'=>$form_state['values']['title'],                    
+                        'cgn_First_Name__c'=>$form_state['values']['first_name'],
+                        'cgn_Middle_Name__c'=>$form_state['values']['middle_name'],
+                        'cgn_Last_Name__c'=>$form_state['values']['last_name'],
+                        'cgn_Gender__c'=>$form_state['values']['gender'],
+                        'cgn_Occupation__c'=>$form_state['values']['occupation'],
+                        'cgn_Web_Quote_Ref_Number__c' =>$result['initial_quote_no'],
+                        'cgn_Gainful_Annual_Income__c'=> $form_state['values']['gross_income'],
+                        'cgn_DOB__c'=>date('Y-m-d',$dob),
+                        'cgn_Opportunity__c'=>$sf_result->id,
+                        //'cgn_Height__c' => '',
+                        'cgn_Weight__c' => '90',
+                        //'cgn_BMI__c' => '',
+                        //'cgn_Relationship_with_Proposer__c' => '',
+                        //'cgn_Underwriting_Required_Flag__c' => '',
+                    );
+                    $sf_insured_result = $sforce->mapSforceLead($insured_data,'cgn_Insured_Details__c');
+                    //echo $sf_insured_id;exit;
+                    if(sfdcErrors($sf_insured_result,'cgn_Insured_Details__c')){
+                            db_update('insured_data')
+                                ->fields(array(
+                                    'sf_id' =>$sf_insured_result->id, 
+                                ))
+                                ->condition('insured_id',$result)
+                                ->execute(); 
+                        }
+                }else{
+                    
+                    $result=db_insert("insured_data")
+                    ->fields(array(
+                    'application_id'=>$application,
+                    'uid'=>(isset($user->uid) ? $user->uid : $guestuser->uid), 
+                    'ordering'=>$i,
+                    'people_type'=>'adult',
+                    'sub_ordering'=>$i,
+                    'gender'=>$stp_data['gender'],
+                    'dob'=>$stp_data['dob'],
+                    'tobacco'=>$stp_data['tobacco'],
+                    'alcohol'=>$stp_data['alcohol'],
+                    'cigarette'=>$stp_data['cigarette'],
+                    'tobacco_consumption'=>$stp_data['tobacco_consumption'],
+                    'alcohol_consumption'=>$stp_data['alcohol_consumption'],
+                    'cigarette_consumption'=>$stp_data['cigarette_consumption'],
+                    
+                ))
+                ->execute();
+                }
+                  
+            }else if($j<=$values['no_childs']){
+                
+                 $stp_data=db_select('get_quote_people_details','p')
+                            ->fields('p')
+                            ->condition('p.sub_ordering',$i)
+                            ->condition('p.quote_id',$_SESSION['quick_quote']['quote_no'])
+                            ->execute()->fetchAssoc();
+                
+                
+                 $result=db_insert("insured_data")
+                ->fields(array(
+                    'application_id'=>$application,
+                    'uid'=>(isset($user->uid) ? $user->uid : $guestuser->uid), 
+                    'ordering'=>$i,
+                    'people_type'=>'child',
+                    'sub_ordering'=>$j,
+                    'gender'=>$stp_data['gender'],
+                    'dob'=>$stp_data['dob'],
+                    'tobacco'=>$stp_data['tobacco'],
+                    'alcohol'=>$stp_data['alcohol'],
+                    'cigarette'=>$stp_data['cigarette'],
+                    'tobacco_consumption'=>$stp_data['tobacco_consumption'],
+                    'alcohol_consumption'=>$stp_data['alcohol_consumption'],
+                    'cigarette_consumption'=>$stp_data['cigarette_consumption'],
+                ))
+                ->execute();
+                $j++;
+            }   
+        }
+        
+        $form_state['redirect']='application/'.$application.'/proposer';    
+        
+    }else{
+        
+        $diff=db_select('applications','a')
+                ->fields('a',array('no_adults','no_childs','sf_id'))
+                ->condition('quote_id',$_SESSION['quick_quote']['quote_no'])
+                ->condition('app_id',$query)
+                ->execute()->fetchAssoc();
+         $sf_id = $diff['sf_id'];
+        if(!empty($sf_id)){
+            
+            if(isset($_SESSION['quick_quote'])){
+                     
+              $quote_id=$_SESSION['quick_quote']['quote_no'];
+              $result=quote_details_by_id($quote_id);
+            
+            if(!empty($result)){
+                
+                $location=location_details($result['city_id']);
+                if(!empty($location)){
+                    $location_value=$location['city_name'];
+                    $zone_value=strtoupper($location['zone']);
+                }
+                $insuredDob=date('d/m/Y',$result['dob']);
+            }
+            
+            //send data to the SFDC.
+            $quote_lead=array(
+                    'cgn_No_of_Adults__c' =>(int)$result['no_adults'],
+                    'cgn_No_of_Children__c' =>(int)$result['no_childs'],
+                    'cgn_Zone__c' => $zone_value,
+                    'cgn_Product_plan_option_SI_option__c' => $result['productPlanOptionCd'],
+                    'cgn_Quote_Amount__c' => (double)$result['total_premium'],
+                    'cgn_Web_Quote_Ref_Number__c' =>$result['initial_quote_no'],
+                    //'cgn_Sub_Plan_ID__c' =>$result['productId'],
+                    'cgn_Plan_ID__c' => $result['parentProductId'],
+                    'cgn_Product_line__c' => $result['productFamilyId'],
+                    'cgn_base_premium__c' => (double)$result['basepremium'],
+                    'cgn_Channel_Id__c' => $result['channelId'],
+                    'cgn_Agent_ID__c' => $result['agentId'],
+                    'cgn_Campaign_Code__c' => $result['campaignCd'],
+                    'cgn_Policy_Term__c' => $result['tenure'],
+                    //'cgn_Reminder_After_duration__c' => $session_response->reminder_duration,
+                    //'cgn_Total_Premium_Quote_Amount__c' => '',
+                    'cgn_Policy_Type__c' => $result['policyType'],
+                   // 'cgn_Product_Id__c' => $result['productId'],
+                    'cgn_Sum_Insured_Value__c' => $result['sum_insured'],  
+                    
+                    //'opprtunity' => 'data',
+                    'Name'=>$form_state['values']['first_name'],
+                    'StageName'=>'Prospecting',
+                    'CloseDate'=>"2013-07-20",
+                    'cgn_Proposer_Title__c' =>$form_state['values']['title'],
+                    'cgn_Proposer_First_Name__c' => $form_state['values']['first_name'],
+                    'cgn_Proposer_Middle_Name__c' => $form_state['values']['middle_name'],
+                    'cgn_Proposer_Last_Name__c' => $form_state['values']['last_name'],
+                    'cgn_Proposer_Gender__c'=> $form_state['values']['gender'],
+                    'cgn_Proposer_DOB__c' => date('Y-m-d',$dob),
+                    'cgn_Communication_Address_Line_1__c' => $form_state['values']['corresp_address_line_1'],
+                    'cgn_Communication_Address_Line_2__c' => $form_state['values']['corresp_address_line_2'],
+                    //'cgn_Communication_Address_Landmark__c' => '',
+                    'cgn_Communication_Address_City__c' => $form_state['values']['corresp_city'],
+                    'cgn_Communication_Address_State__c' => $form_state['values']['corresp_state'],
+                    'cgn_Communication_Address_DIstrict__c' => $form_state['values']['corresp_town_district'],
+                    'cgn_Communication_Address_Pincode__c' => $form_state['values']['corresp_pincode'],
+                    'cgn_Permanent_Address_Line_1__c' => $form_state['values']['permnt_address_line_1'],
+                    'cgn_Permanent_Address_Line_2__c' => $form_state['values']['permnt_address_line_2'],
+                    //'cgn_Permanent_Address_Landmark__c' => '',
+                    'cgn_Permanent_Address_City__c' => $form_state['values']['permnt_city'],
+                    'cgn_Permanent_Address_State__c' => $form_state['values']['permnt_state'],
+                    'cgn_Permanent_Address_District__c' => $form_state['values']['permnt_town_district'],
+                    'cgn_Permanent_Address_Pincode__c' => $form_state['values']['permnt_pincode'],
+                    'cgn_Marital_Status__c' => $form_state['values']['marital_status'],
+                    'cgn_Nationality__c' => $form_state['values']['nationality'],
+                    'cgn_Contact_Number__c' => $form_state['values']['phone_number'],
+                    'cgn_Educational_Qualification__c' => $form_state['values']['educational_qualification'],
+                    'cgn_Email_Address__c' => $form_state['values']['email'],
+                    'cgn_Annual_Gross_Income_in_Rs__c' => $form_state['values']['gross_income'],
+                    'cgn_Occupation__c'=> $form_state['values']['occupation'],
+                    //'cgn_Policy_Number__c' => '',
+                    
+                    //'cgn_Proposal_Number__c'=> '',
+                    //'cgn_Policy_Start_Date__c'=> '',
+                    //'cgn_Policy_End_Date__c'=> '',
+                    
+                );
+                $result = $sforce->updateSforceLead($quote_lead,'Opportunity',$sf_id);
+                sfdcErrors($result,'Opportunity');
+                 
+            // Inserting salesforce addon object with reference to lead id generated above.
+             /*   
+            $quote_addon_details=quote_addon_details($_SESSION['quick_quote']['initial_quote_no']);
+            
+            if($quote_addon_details){
+                
+                foreach($quote_addon_details  as $quote_addon_detail){
+                    
+                    $quote_addon=array(
+                        'cgn_Product_Id__c'=>$quote_addon_detail->productId,
+                        'cgn_Base_Premium__c'=>$quote_addon_detail->basePremium,
+                        'cgn_Product_Type_Code__c'=>'AddOn',
+                        'cgn_Lead__c'=>$sf_id,
+                    );
+                    $sf_addon_id = $sforce->mapSforcelead($quote_addon,'cgn_Add_On__c');
+                    
+                    //dpr($sf_addon_id);exit;
+                        
+                    if($sf_addon_id){
+                        
+                       $result = db_update('quote_addons')
+                                ->fields(array(
+                                    'sf_addon_id' => $sf_addon_id, 
+                                ))
+                                ->condition('initial_quote_no',$_SESSION['quick_quote']['initial_quote_no'])
+                                ->execute();
+                    }
+                }
+            }*/
+            
+            /*
+            // Inserting salesforce rider object with reference to lead id generated above.
+            $quote_ridder_details=quote_ridder_details($_SESSION['quick_quote']['initial_quote_no']);
+            
+            
+            if($quote_ridder_details){
+                
+                foreach($quote_ridder_details  as $quote_ridder_detail){
+                    
+                dpr($quote_ridder_detail);exit;           
+                    
+                    $quote_ridder=array(
+                        'cgn_Product_Id__c'=>$quote_ridder_detail->productId,
+                        'cgn_Base_Premium__c'=>$quote_ridder_detail->basePremium,
+                        'cgn_Product_Type_Code__c'=>'Rider',
+                        'cgn_Lead__c'=>$sf_quote_id,
+                    );
+                    $sf_ridder_id = $sforce->mapSforcelead($quote_ridder,'cgn_Rider__C');
+                    
+                    if($sf_ridder_id){
+                        
+                       $result = db_update('quote_ridders')
+                                ->fields(array(
+                                    'sf_rider_id' => $sf_ridder_id, 
+                                ))
+                                ->condition('initial_quote_no',$_SESSION['quick_quote']['initial_quote_no'])
+                                ->execute();
+                    }
+                }
+                
+            } */
+            /*
+             $quote_charge_details=quote_charge_details($_SESSION['quick_quote']['initial_quote_no']);
+            
+            if($quote_charge_details){
+                
+                foreach($quote_charge_details  as $quote_charge_detail){
+                
+                    $quote_charge=array(
+                        'cgn_Charge_Class__c'=>$quote_charge_detail->chargeClassCd,
+                        'cgn_Charge_Amount__c'=>$quote_charge_detail->chargeAmount,
+                        'cgn_Charge_Percentage__c'=>$quote_charge_detail->chargePercentage,
+                        'cgn_Opportunity__c'=>$sf_id,
+                    );
+                    $sf_charge_id = $sforce->mapSforcelead($quote_charge,'Product_Charge_Lead__c');
+                    if($sf_charge_id){
+                        
+                       $result = db_update('quotationchargedolist')
+                                ->fields(array(
+                                    'sf_opp_id' => $sf_charge_id, 
+                                ))
+                                ->condition('initial_quote_no',$_SESSION['quick_quote']['initial_quote_no'])
+                                ->execute();
+                    }
+                }
+            
+            }*/            
+            
+             }
+        }
+        
+        if(($diff['no_adults'] + $diff['no_childs']) != ($values['no_adults'] + $values['no_childs'])){
+            
+            db_delete('insured_data')
+            ->condition('application_id',$query)
+            ->execute();
+    
+            db_delete('screening_details')
+            ->condition('application_id',$query)
+            ->execute();
+            
+            for($i=1,$j=1;$i<=($values['no_adults'] + $values['no_childs']);$i++){
+        
+              if($i<=$values['no_adults']){
+                    if($i==1){
+                        $result=db_insert("insured_data")
+                        ->fields(array(
+                        'application_id'=>$query,
+                        'uid'=>(isset($user->uid) ? $user->uid : $guestuser->uid),
+                        'title'=>$form_state['values']['title'],
+                        'first_name'=>$form_state['values']['first_name'],
+                        'middle_name'=>$form_state['values']['middle_name'],
+                        'last_name'=>$form_state['values']['last_name'],
+                        'gender'=>$form_state['values']['gender'],
+                        'occupation'=>$form_state['values']['occupation'],
+                        'annual_income'=>$form_state['values']['gross_income'],
+                        'ordering'=>$i,
+                        'people_type'=>'adult',
+                        'sub_ordering'=>$i,
+                        'dob'=>$dob,
+                        'day'=>$form_state['values']['dob']['day'],
+                        'month'=>$form_state['values']['dob']['month'],
+                        'year'=>$form_state['values']['dob']['year'],
+                        'city'=>$form_state['values']['corresp_city'],
+                        'pincode'=>$form_state['values']['corresp_pincode'],
+                    ))
+                    ->execute();
+                        // insert insured details
+                        $insured_data = array(
+                            'quote_no' => $result['initial_quote_no'],
+                            'cgn_Title__c'=>$form_state['values']['title'],                    
+                            'cgn_First_Name__c'=>$form_state['values']['first_name'],
+                            'cgn_Middle_Name__c'=>$form_state['values']['middle_name'],
+                            'cgn_Last_Name__c'=>$form_state['values']['last_name'],
+                            'cgn_Gender__c'=>$form_state['values']['gender'],
+                            'cgn_Occupation__c'=>$form_state['values']['occupation'],
+                            //'cgn_Web_Quote_Ref_Number__c' =>$result['initial_quote_no'],
+                            'cgn_Gainful_Annual_Income__c'=> $form_state['values']['gross_income'],
+                            'cgn_DOB__c'=>date('Y-m-d',$dob),
+                            'cgn_Opportunity__c'=>$sf_id,
+                            //'cgn_Height__c' => '',
+                            'cgn_Weight__c' => '90',
+                            //'cgn_BMI__c' => '',
+                            //'cgn_Relationship_with_Proposer__c' => '',
+                            //'cgn_Underwriting_Required_Flag__c' => '',
+                        );
+                            $sf_result = $sforce->mapSforceLead($insured_data,'cgn_Insured_Details__c');
+                            if(sfdcErrors($sf_result,'cgn_Insured_Details__c')){
+                                db_update('insured_data')
+                                ->fields(array(
+                                    'sf_id' =>$sf_result->id, 
+                                ))
+                                ->condition('insured_id',$result)
+                                ->execute(); 
+                            }
+                    }else{
+                        
+                        $result=db_insert("insured_data")
+                        ->fields(array(
+                        'application_id'=>$query,
+                        'uid'=>(isset($user->uid) ? $user->uid : $guestuser->uid), 
+                        'ordering'=>$i,
+                        'people_type'=>'adult',
+                        'sub_ordering'=>$i,
+                    ))
+                    ->execute();
+                    }
+                }else if($j<=$values['no_childs']){
+                    
+                     $result=db_insert("insured_data")
+                    ->fields(array(
+                        'application_id'=>$query,
+                        'uid'=>(isset($user->uid) ? $user->uid : $guestuser->uid), 
+                        'ordering'=>$i,
+                        'people_type'=>'child',
+                        'sub_ordering'=>$j,
+                    ))
+                    ->execute();
+                    $j++;
+                }   
+            }
+            
+        }else{
+            
+            db_update("applications")
+            ->fields(array(
+                    'status'=>'Partial',
+                    'fname'=>$form_state['values']['first_name'],
+                    'mname'=>$form_state['values']['middle_name'],
+                    'lname'=>$form_state['values']['last_name'],
+                    'email'=>$form_state['values']['email'],
+                    'mobile'=>$form_state['values']['phone_number'],
+                    'residence_number'=>$form_state['values']['residence_number'],
+                    'office_number'=>$form_state['values']['office_number'],
+                    'gender'=>$form_state['values']['gender'],
+                    'marital_status'=>$form_state['values']['marital_status'],
+                    'educational_qualification'=>$form_state['values']['educational_qualification'],
+                    'occupation'=>$form_state['values']['occupation'],
+                    'annual_gross_income'=>$form_state['values']['gross_income'],
+                    'no_adults'=>$values['no_adults'],
+                    'no_childs'=>$values['no_childs'],
+                    'dob'=>$dob,
+                      'day'=>$form_state['values']['dob']['day'],
+                        'month'=>$form_state['values']['dob']['month'],
+                        'year'=>$form_state['values']['dob']['year'],
+                    'nationality'=>$form_state['values']['nationality'],
+                    'permnt_address_line_1'=>$form_state['values']['permnt_address_line_1'],
+                    'permnt_address_line_2'=>$form_state['values']['permnt_address_line_2'],
+                    'permnt_city'=>$form_state['values']['permnt_city'],
+                    'permnt_district'=>$form_state['values']['permnt_town_district'],
+                    'permnt_state'=>$form_state['values']['permnt_state'],
+                    'permnt_pincode'=>$form_state['values']['permnt_pincode'],
+                    'corresp_address_line_1'=>$form_state['values']['corresp_address_line_1'],
+                    'corresp_address_line_2'=>$form_state['values']['corresp_address_line_2'],
+                    'corresp_city'=>$form_state['values']['corresp_city'],
+                    'corresp_district'=>$form_state['values']['corresp_town_district'],
+                    'corresp_state'=>$form_state['values']['corresp_state'],
+                    'corresp_pincode'=>$form_state['values']['corresp_pincode'],
+                    'modify'=>time(),
+                    'user_id'=>(isset($user->uid) ? $user->uid : $guestuser->uid),
+                )
+            )
+            
+            ->condition('quote_id',$_SESSION['quick_quote']['quote_no'])
+            ->condition('app_id',$query)
+            ->execute();
+                //send data to the SFDC.
+                $DataInsert=array(
+                    'quote_no' => $quote_no,
+                    'cgn_Proposer_Title__c' =>$form_state['values']['title'],
+                    'cgn_Proposer_First_Name__c' => $form_state['values']['first_name'],
+                    'cgn_Proposer_Middle_Name__c' => $form_state['values']['middle_name'],
+                    'cgn_Proposer_Last_Name__c' => $form_state['values']['last_name'],
+                    'cgn_Proposer_Gender__c'=> $form_state['values']['gender'],
+                    'cgn_Proposer_DOB__c' => date('Y-m-d',$dob),
+                    'cgn_Communication_Address_Line_1__c' => $form_state['values']['corresp_address_line_1'],
+                    'cgn_Communication_Address_Line_2__c' => $form_state['values']['corresp_address_line_2'],
+                    //'cgn_Communication_Address_Landmark__c' => '',
+                    'cgn_Communication_Address_City__c' => $form_state['values']['corresp_city'],
+                    'cgn_Communication_Address_State__c' => $form_state['values']['corresp_state'],
+                    'cgn_Communication_Address_DIstrict__c' => $form_state['values']['corresp_town_district'],
+                    'cgn_Communication_Address_Pincode__c' => $form_state['values']['corresp_pincode'],
+                    'cgn_Permanent_Address_Line_1__c' => $form_state['values']['permnt_address_line_1'],
+                    'cgn_Permanent_Address_Line_2__c' => $form_state['values']['permnt_address_line_2'],
+                    //'cgn_Permanent_Address_Landmark__c' => '',
+                    'cgn_Permanent_Address_City__c' => $form_state['values']['permnt_city'],
+                    'cgn_Permanent_Address_State__c' => $form_state['values']['permnt_state'],
+                    'cgn_Permanent_Address_District__c' => $form_state['values']['permnt_town_district'],
+                    'cgn_Permanent_Address_Pincode__c' => $form_state['values']['permnt_pincode'],
+                    'cgn_Marital_Status__c' => $form_state['values']['marital_status'],
+                    'cgn_Nationality__c' => $form_state['values']['nationality'],
+                    'cgn_Contact_Number__c' => $form_state['values']['phone_number'],
+                    'cgn_Educational_Qualification__c' => $form_state['values']['educational_qualification'],
+                    'cgn_Email_Address__c' => $form_state['values']['email'],
+                    'cgn_Annual_Gross_Income_in_Rs__c' => $form_state['values']['gross_income'],
+                    'cgn_Occupation__c'=> $form_state['values']['occupation'],
+                    //'cgn_Policy_Number__c' => '',
+                    'cgn_Date__c'=> date('Y-m-d'),
+                    'cgn_City__c'=> $form_state['values']['corresp_city'],
+                    //'cgn_Proposal_Number__c'=> '',
+                    //'cgn_Policy_Start_Date__c'=> '',
+                    //'cgn_Policy_End_Date__c'=> '',
+                    'cgn_Integration_Status__c' => 'Partial',
+                );
+                //$sforce->updateSforcelead($DataInsert,'Opportunity',$sf_id);
+        
+        db_update("insured_data")
+            ->fields(array(
+                'title'=>$form_state['values']['title'],            
+                'first_name'=>$form_state['values']['first_name'],
+                'middle_name'=>$form_state['values']['middle_name'],                
+                'last_name'=>$form_state['values']['last_name'],
+                'gender'=>$form_state['values']['gender'],
+                'occupation'=>$form_state['values']['occupation'],
+                'annual_income'=>$form_state['values']['gross_income'],                
+                'dob'=>$dob,
+                  'day'=>$form_state['values']['dob']['day'],
+                        'month'=>$form_state['values']['dob']['month'],
+                        'year'=>$form_state['values']['dob']['year'],
+                'city'=>$form_state['values']['corresp_city'],
+                'pincode'=>$form_state['values']['corresp_pincode'],                
+            ))
+            ->condition('ordering',1)
+            ->condition('application_id',$query)
+            ->execute();   
+        }
+        
+     /*
+            db_delete('insured_data')
+            ->condition('application_id',$query)
+            ->execute();
+            
+            for($i=1,$j=1;$i<=($values['no_adults'] + $values['no_childs']);$i++){
+        
+          if($i<=$values['no_adults']){
+                if($i==1){
+                    $result=db_insert("insured_data")
+                    ->fields(array(
+                    'application_id'=>$query,
+                    'uid'=>(isset($user->uid) ? $user->uid : $guestuser->uid),
+                    'first_name'=>$form_state['values']['first_name'],
+                    'last_name'=>$form_state['values']['last_name'],
+                    'gender'=>$form_state['values']['gender'],
+                    'ordering'=>$i,
+                    'people_type'=>'adult',
+                    'sub_ordering'=>$i,
+                    //'dob'=>$dob,
+                    'day'=>$form_state['values']['dob']['day'],
+                    'month'=>$form_state['values']['dob']['month'],
+                    'year'=>$form_state['values']['dob']['year'],
+                ))
+                ->execute();
+                }else{
+                    
+                    $result=db_insert("insured_data")
+                    ->fields(array(
+                    'application_id'=>$query,
+                    'uid'=>(isset($user->uid) ? $user->uid : $guestuser->uid),
+                    'ordering'=>$i,
+                    'people_type'=>'adult',
+                    'sub_ordering'=>$i,
+                ))
+                ->execute();
+                }
+            }else if($j<=$values['no_childs']){
+                
+                 $result=db_insert("insured_data")
+                ->fields(array(
+                    'application_id'=>$query,
+                    'uid'=>(isset($user->uid) ? $user->uid : $guestuser->uid),
+                    'ordering'=>$i,
+                    'people_type'=>'child',
+                    'sub_ordering'=>$j,
+                ))
+                ->execute();
+                $j++;
+            }   
+        }*/
+        $form_state['redirect']='application/'.$query.'/proposer';
+    }      
+}
+
+
+function validate_phone_number($value){
+    
+    $len=strlen($value);
+    if($len < 10){
+            return true;
+    }else {
+            return false;
+    }  
+}
+function validate_email($email_address){
+    
+    if(empty($email_address)){
+        return true;
+    }
+    elseif (filter_var($email_address, FILTER_VALIDATE_EMAIL)) {
+            return false;
+    } else {
+            return true;
+    }
+}
+
+function option_name($oid){
+    
+    $result=db_select('uc_attribute_options','u')
+            ->fields('u',array('name'))
+            ->condition('u.oid',$oid)
+            ->execute();
+            
+    $option_name=$result->fetchField();
+    return $option_name;
+    
+}
+
+function application_confirmation($app_id){
+    
+    global $base_url;
+    $applin_no= $app_id;
+    $final_amount = db_select('applications','a');
+    $final_amount->innerJoin('get_quote','q','q.qid=a.quote_id');
+    $final_amount->fields('q')
+                ->condition('a.app_id',$applin_no);
+            
+    $result=$final_amount->execute()->fetchAssoc();
+    
+    if(!empty($result['finalpremium'])){
+    
+         $finalPremium=$result['finalpremium'];
+    }else{
+
+        $finalPremium=$result['total_premium'];
+    }
+    
+    return theme('application_confirmation_details',array('app_id'=>$app_id));
+    
+}
+/**
+ * Implements hook_theme() 
+ * 
+ */ 
+ 
+function application_theme(){
+    
+    return array(
+        'application_confirmation_details' => array(
+            'template'  => 'appl-confirmation',
+            //'variables'=>array('app_id'=>NULL),
+        ),
+        'payment_response_details' => array(
+            'template'  => 'payment-response',
+            //'variables'=>array('app_id'=>NULL),
+        ),
+        'payment_details' => array(
+            'template'  => 'payment-details',
+            //'variables'=>array('app_id'=>NULL),
+        ),
+        'payment_fail_response' => array(
+            'template'  => 'payment-fail',
+        ),
+    );
+}
+function  template_preprocess_application_confirmation_details(&$variables){
+        
+        
+        drupal_add_js(drupal_get_path('module','application').'/js/application.js');
+        //dpr($variables);exit;
+        global $base_url;global $user,$sforce;
+        
+        //
+//         $constent_lead=array(
+//            'cgn_Question_Set_Code__c'=>1,
+//            'cgn_Question_Code__c'=>1,
+//            'cgn_Data_Element_Code__c'=>1,
+//            'cgn_Response_Value_Answer__c'=>1,
+//            'cgn_Opportunity__c'=>'',
+//        );
+//        $sf_quote_id = $sforce->mapSforcelead($constent_lead,'Consent_and_Declaration__c');
+        
+        if(isset($_SESSION['quick_quote'])){
+            
+            $values=$_SESSION['quick_quote']; 
+               
+        }
+        //dpr($_SESSION);exit;
+        if(($values['no_adults'] + $values['no_childs']) > 1){
+          
+            $result=db_select('insured_data','i')
+                    ->fields('i',array('ordering'))
+                    ->condition('i.application_id',$variables['app_id'])
+                    ->orderBy('i.ordering','DESC')
+                    ->execute()->fetchField();
+            $variables['back']=$base_url.'/application/'.$variables['app_id'].'/insured/'.$result;
+            
+        }else if($values['no_adults'] + $values['no_childs'] <= 1){
+            
+             $variables['back']=$base_url.'/application/'.$variables['app_id'].'/proposer';
+             
+        }
+        //dpr($variables);exit;
+        $proposer=db_select('applications','a')
+                ->fields('a')
+                ->condition('a.app_id',$variables['app_id'])
+                ->condition('a.quote_id',$values['quote_no'])
+                ->condition('a.user_id',$variables['user']->uid)
+                ->execute()->fetchAssoc();
+
+
+        $insureds=db_select('insured_data','i')
+                ->fields('i')
+                ->condition('i.application_id',$variables['app_id'])
+                //->condition('i.ordering',1,'>')
+                ->execute();
+        
+         if(isset($insureds) && !empty($insureds)){
+            
+            $count=$insureds->rowCount()+1;
+            $variables['member_count']=$count;
+             foreach($insureds as $member){
+                
+                if($member->relationship!='Self'){
+                    
+                        $variables['member'][$member->ordering]=$member;    
+                }
+             }
+         }
+        if(isset($proposer) && !empty($proposer)){
+            $variables['proposer_details']=$proposer;
+        }
+        $costent_decs=db_select('consent_declaration_master','m')
+                    ->fields('m')
+                    ->execute();
+        foreach($costent_decs as $declaration){
+            
+            $variables['constent_declaration'][]=$declaration;
+        }
+      // dpr($variables);exit;
+}
+
+/**
+ * 
+ *  Implements hook_block_info()
+ * 
+ */
+function application_block_info(){
+    
+    
+    $blocks['stored_application_edit']=array(
+        'info'=>'Stored Application Details Edit',
+        'visibility' => BLOCK_VISIBILITY_LISTED,
+	    'pages' => '<front>',
+    ) ;
+    $blocks['final_application_edit']=array(
+        'info'=>'Final Application Details Edit',
+        'visibility' => BLOCK_VISIBILITY_LISTED,
+	    'pages' => '<front>',
+    ) ;
+    $blocks['consent_declaration_detail']= array(
+        'info' => 'Consent and Declaration Detail',
+        'visibility' => BLOCK_VISIBILITY_LISTED
+    );
+    return $blocks;
+    
+}
+
+/**
+ * Implements hook_block_view()
+ * 
+ * @param $delta
+ * @return Block view
+ */
+function application_block_view($delta){
+    
+    $block = array();
+    switch ($delta) {
+	      
+       case 'stored_application_edit':
+            $block['subject']='';
+            $block['content']=_application_stored_information_edit();
+            break;
+       case 'final_application_edit':
+            $block['subject']='';
+            $block['content']=_application_final_information_edit();
+            break; 
+       case 'consent_declaration_detail':
+            $block['subject']='';
+            $block['content']='';
+            break;
+	}
+    return $block;
+    
+}
+function _application_final_information_edit(){
+    
+    $arg=arg();
+    
+    global $base_url;
+    $query=db_select('insured_data','i')
+            ->fields('i')
+            ->condition('application_id	',$arg[1]);
+    //$query->isNotNull('day');
+    //$query->isNotNull('month');
+    // $query->isNotNull('year');
+    $query->isNotNull('dob');
+    $result=$query->execute()->fetchAll();
+    
+    $output='';
+    $output.='<div class="purchasepageleft conf">';
+    foreach($result as $insured_details){
+        
+        
+         if(!empty($insured_details->height)){
+            $conversion=conversion_cms_to_feet_and_inches($insured_details->height);
+            $feet=$conversion['feet'];
+            $inches=$conversion['inches'];    
+        }    
+        $age=age_from_dob($insured_details->day,$insured_details->month,$insured_details->year);
+        
+            //$age='';
+           // $year=date('Y',$insured_details->dob);
+           // $month=date('n',$insured_details->dob);
+           // $day=date('j',$insured_details->dob);
+            $dob='('.$insured_details->day.'-'.$insured_details->month.'-'.$insured_details->year.')';
+            
+            if($insured_details->ordering==1){
+                //$edit_path=$base_url.'/application/'.$insured_details->application_id.'/proposer';
+                $edit_path=$base_url.'/application/'.$arg[1].'/proposer';
+            }else{
+                $edit_path=$base_url.'/application/'.$insured_details->application_id.'/insured/'.$insured_details->ordering;
+            }
+            
+            
+            
+            $output.='<h3>'.ucfirst($insured_details->relationship).'</h3>
+                          <div class="edit"><a href="'.$edit_path.'">(EDIT)</a></div>
+                          <div class="innercontent">
+                            <p>'.$insured_details->first_name.'&nbsp;'.$insured_details->last_name.''.
+                              $age.' YEARS ('.$dob.')
+                              '.$feet.' FEET '.$inches.' INCHES
+                              '.$insured_details->weight.'KGS </p>
+                          </div>
+                          <div class="innerlistd">
+                            <ul>
+                              <li>NO PRE EXISTING ILLNESS</li>
+                              <li class="lastbtn">NO CASE OF HOSPITALISATION</li>
+                            </ul>
+                        </div>';
+            
+            
+            /*
+            $output.='<div class="data_edit">
+                            <div class="data_title">'.ucfirst($insured_details->relationship).'&nbsp;                 
+                            <a href="'.$edit_path.'">Edit</a>
+                            </div>
+                            <div>   
+                                <div>
+                                    <div>'.$insured_details->first_name.'&nbsp;'.$insured_details->last_name.'</div>
+                                    <div>'.$age.'&nbsp;years'.$dob.'</div>
+                                <div>'.$insured_details->weight.'&nbsp;Kgs</div>
+                                <div>'.$feet.'&nbsp;feet & '.$inches.'&nbsp;inches</div>
+                            </div>
+                        </div>
+                    </div>';*/                   
+    }
+    
+    $output.='</div>';    
+    return $output;
+    
+}
+function _application_stored_information_edit(){
+    
+    $arg=arg();
+    
+    global $base_url;
+    $query=db_select('insured_data','i')
+            ->fields('i')
+            ->condition('application_id	',$arg[1])
+            //->condition('ordering',$arg[3]-1,'<=')
+            ->condition('ordering',$arg[3],'!=');
+    //$query->isNotNull('day');
+    //$query->isNotNull('month');
+    //$query->isNotNull('year');
+    $query->isNotNull('dob');
+    $result=$query->execute()->fetchAll();
+      
+           
+    $output='';
+    $output.='<div class="purchasepageleft conf">';
+    
+    foreach($result as $insured_details){
+        
+       // dpr($insured_details);exit;
+    
+        if(!empty($insured_details->height)){
+            $conversion=conversion_cms_to_feet_and_inches($insured_details->height);
+            $feet=$conversion['feet'];
+            $inches=$conversion['inches'];    
+        }    
+    $age=age_from_dob($insured_details->day,$insured_details->month,$insured_details->year);
+    //$age='';
+   // $year=date('Y',$insured_details->dob);
+   // $month=date('n',$insured_details->dob);
+   // $day=date('j',$insured_details->dob);
+    $dob='('.$insured_details->day.'-'.$insured_details->month.'-'.$insured_details->year.')';
+    
+    if($insured_details->ordering==1){
+        $edit_path=$base_url.'/application/'.$insured_details->application_id.'/proposer';
+         //$edit_path=$base_url.'/application/'.$arg[1].'/proposer';
+        //$edit_path=$base_url.'/application_details/'.$arg[1];
+    }else{
+        $edit_path=$base_url.'/application/'.$insured_details->application_id.'/insured/'.$insured_details->ordering;
+    }
+    
+    $output.='<h3>'.ucfirst($insured_details->people_type).'&nbsp;'.$insured_details->sub_ordering.'</h3>
+                          <div class="edit"><a href="'.$edit_path.'">(EDIT)</a></div>
+                          <div class="innercontent">
+                            <p>'.$insured_details->first_name.'&nbsp;'.$insured_details->last_name.''.
+                              $age.' YEARS ('.$dob.')
+                              '.$feet.' FEET '.$inches.' INCHES
+                              '.$insured_details->weight.'KGS </p>
+                          </div>
+                          <div class="innerlistd">
+                            <ul>
+                              <li>NO PRE EXISTING ILLNESS</li>
+                              <li class="lastbtn">NO CASE OF HOSPITALISATION</li>
+                            </ul>
+                        </div>';                    
+    }
+    return $output;
+}
+function  conversion($feet, $inches) {
+    
+    $total_inches = 12*$feet + $inches;
+    $total_centimeters = 2.54*$total_inches;
+    return $total_centimeters;
+    
+}
+function conversion_cms_to_feet_and_inches($cms){
+    
+    $feet=$cms/30.48;
+    $inches=($cms/2.54)-((int)$feet*12);
+    
+    $final=array();
+    $final['feet']=(int)$feet;
+    $final['inches']=(int)$inches;
+    return $final;
+}
+
+function age_from_dob($day,$month,$year) {
+
+/*
+    $dob="$day-$month-$year";
+    $ageTime=strtotime($dob);
+    list($day,$month,$year) = explode('-', $ageTime);
+    
+  */  
+    
+    if (($month = (date('m') - $month)) < 0) {
+        $year++;
+    } elseif ($month == 0 && date('d') - $day < 0) {
+        $year++;
+    }
+    return date('Y') - $year;
+       
+}
+/*
+function calculate_age_years($day,$month,$year){
+    
+    //dpr($day);exit;
+    //$ageTime = mktime(0, 0, 0, $month, $day, $year);
+    
+    $dob="$day.$month.$year";
+    
+    //dpr($dob);exit;
+    //date('j.n.Y',$ageTime)
+    //$ageTime=strtotime($dob); 
+    $bday=new DateTime($dob);
+    $today = new DateTime(date('j.n.Y', time()));
+    $age = $today->diff($bday);
+    return $age->y; // Returns No of Years
+    
+    
+}*/

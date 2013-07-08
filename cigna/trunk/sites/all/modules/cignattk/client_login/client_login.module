@@ -1,0 +1,1327 @@
+<?php
+
+function client_login_menu() {
+    $items['dashboard'] = array(
+      'page callback' => '_user_profile',
+	  'access callback' =>TRUE,
+      'type' => MENU_CALLBACK,	  
+    );
+    $items['proposal-file'] = array(
+      'page callback' => '_user_profile_pdf',
+	  'access callback' =>TRUE,
+      'page arguments' => array(),
+      'type' => MENU_CALLBACK,	  
+    );
+
+    $items['receipt-pdf-file'] = array(
+      'page callback' => '_received_form_pdf',
+	  'access callback' =>TRUE,
+      'page arguments' => array(),
+      'type' => MENU_CALLBACK,	  
+    );
+    
+    $items['dashboard/notifications'] = array(
+      'page callback' => '_user_dashboard_notifications',
+	  'access callback' =>TRUE,
+      'type' => MENU_CALLBACK,
+    );
+    
+    $items['dashboard/documents-locker'] = array(
+      'page callback' => '_user_dashboard_documents_locker',
+	  'access callback' =>TRUE,
+      'type' => MENU_CALLBACK,
+	  
+    );
+    $items['dashboard/documents-locker/policy-generator'] = array(
+    
+      'page callback' => 'drupal_get_form',
+      'page arguments'=>array('documents_locker_policy_generator'),
+	  'access callback' =>TRUE,
+      'type' => MENU_CALLBACK,  
+    );
+    $items['dashboard/documents-locker/tax-generator'] = array(
+    
+      'page callback' => 'drupal_get_form',
+      'page arguments' => array('documents_locker_tax_generator'),
+	  'access callback' =>TRUE,
+      'type' => MENU_CALLBACK,
+	  
+    );
+    $items['dashboard/my-expiried-policies'] = array(
+      'page callback' => '_user_dashboard_expired_policies',
+	  'access callback' =>TRUE,
+	  'type' => MENU_CALLBACK,
+    );
+	$items['test'] = array(
+    'title' => 'Update Password',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('client_register_form'),
+    'access callback' => TRUE,
+	//'access arguments' => array(1),
+     'type' => MENU_CALLBACK,
+  );
+	return $items;
+}
+
+function _user_profile_pdf(){
+    
+    global $user, $base_url;    
+    
+    $values=$_GET;
+//    $values['qid']= 1;    
+    
+    //proposal form
+    if(isset($values['qid']) && !empty($values['qid']))
+    {    
+        $details= proposal_form($values['qid']);
+        
+        //echo "<pre>";
+        //print_r($details); exit;
+        
+        $app_id =$details['app_id'];
+        $title = $details['title'];
+        $fullname = $details['fname'].' '.$details['mname'].' '.$details['lname'];
+        $amount = $details['finalpremium'];
+        
+        if ($amount =='' || $amount == NULL)
+        {
+            $amount = $details['basepremium'];
+        }
+        
+        //using convert_number_to_words function        
+        $amount_words = strtoupper(convert_number_to_words($amount));
+        
+        //print "$amount<br>$amount_words";
+        //exit;
+        
+            
+        $policy_no=$details['policy_no'];
+        $transaction_date=date("Y-m-d", $details['transaction_date']);        
+        //$transaction_date= $details['transaction_date'];
+        
+        $policy_start_date = $details['policy_start_date'];
+        $email = $details['email'];
+        $mobile = $details['mobile'];
+        $residence_number = $details['residence_number'];
+        $office_number = $details['office_number'];
+        $gender = $details['gender'];
+        $marital_status = $details['marital_status'];
+        $occupation = $details['occupation'];
+        $annual_gross_income = $details['annual_gross_income'];
+        $dob = date('Y-m-d',$details['dob']);
+        $nationality = $details['nationality'];
+        $permanent_address = $details['permnt_address_line_1'].' & '.$details['permnt_address_line_2'].'/'.$details['permnt_city'].'/'.$details['permnt_district'].'/'.$details['permnt_state'].'/'.$details['permnt_pincode'];
+        $correspondence_address = $details['corresp_address_line_1'].' & '.$details['corresp_address_line_2'].'/'.$details['corresp_city'].'/'.$details['corresp_district'].'/'.$details['corresp_state'].'/'.$details['corresp_pincode'];
+        $tenure = $details['tenure'];
+        $parentProductId = $details['parentProductId'];
+        $policyType = $details['policyType'];
+        //$fullname_insured = $details['first_name'].' '.$details['middle_name'].' '.$details['last_name'];
+        //$relationship_insured = $details['relationship'];
+        //$height_insured = $details['height'];
+        //$weight_insured = $details['weight'];
+        //$city_insured = $details['city'];
+        //$pincode_insured = $details['pincode'];        
+        //$sum_insured_value = $details['sum_insured_value'];
+        $zone = $details['zone'];
+        
+        
+        
+        
+        //file path to be open
+        $file_path = $base_url.'/sites/all/themes/cigna_ttk_2/html/ipmip_proposal_form.html';
+               
+        
+        $file = fopen($file_path, "r") or exit("Unable to open file!");
+        //Output a line of the file until the end is reached
+        
+        $find_text =array(
+                            '%title%','%gender%','%dob%','%marital_status%','%fullname%','%pancard%',
+                            '%permanent_address%','%correspondence_address%','%email%','%mobile%','%residence_number%','%office_number%',
+                            '%occupation%','%annual_gross_income%','%nationality%','%parentProductId%','%policyType%',
+                            '%tenure%','%policy_start_date%','%zone%',
+                            //'%fullname_insured%','%gender_insured%','%dob_insured%','%relationship_insured%',
+                            //'%height_insured%','%weight_insured%','%occupation_insured%','%city_insured%','%pincode_insured%','%sum_insured_value%',
+                            '%policy_number%','%amount%','%transaction_date%','%amount_words%'
+                            
+                          );
+        
+        $replace_text=array(
+                            $title,$gender,$dob,$marital_status,$fullname,'',
+                            $permanent_address,$correspondence_address,$email,$mobile,$residence_number,$office_number,
+                            $occupation,$annual_gross_income,$nationality,$parentProductId,$policyType,
+                            $tenure,$policy_start_date,$zone,
+                            //$fullname_insured,$gender,$dob,$relationship_insured,
+                            //$height_insured,$weight_insured,$occupation,$city_insured,$pincode_insured,$sum_insured_value,
+                            $policy_no,$amount,$transaction_date, $amount_words,                         
+                            );
+        
+        $output_content ='';
+        
+        
+        //query for insurde details
+        //$result_insured = db_query('select first_name,middle_name,last_name,gender,dob,relationship,height,weight,occupation,city,pincode,sum_insured_value from insured_data where application_id='.$app_id)->fetchAssoc();
+        
+        $result_insured = db_select('insured_data', 'i')
+            ->fields('i')
+            ->condition('i.application_id',$app_id)
+            ->execute()
+            ->fetchAll();
+            
+        $costent_decs=db_select('consent_declaration_master','m')
+                    ->fields('m')
+                    ->execute()->fetchAll();
+        
+        //dpr($costent_decs); exit;
+                                  
+         
+        while(!feof($file))
+        {
+            $reader = fgets($file);        
+            
+            if(preg_match('#id="insured_details"#',$reader))
+            {                                             
+                 //echo "<pre>";
+                 //print_r($result_insured);
+                 //exit;                
+    
+                 if ($result_insured)
+                 {
+                     $reader =preg_replace('!<tr id="insured_details"></tr>!','',$reader);
+                    
+                     foreach($result_insured as $data)
+                     {
+                        $fullname_insured = $data->first_name.' '.$data->middle_name.' '.$data->last_name;                   
+                        
+                        $dobirth = date('Y-m-d', $data->dob);
+                        
+                        $output_content .='<tr>';
+                        $output_content .='<td>'.$fullname.'</td>';
+                        $output_content .='<td>'.$data->gender.'</td>';
+                        $output_content .='<td>'.$dobirth.'</td>';
+                        $output_content .='<td>'.$data->relationship.'</td>';
+                        $output_content .='<td>'.$data->height.'</td>';
+                        $output_content .='<td>'.$data->weight.'</td>';
+                        $output_content .='<td>'.$data->occupation.'</td>';
+                        $output_content .='<td>'.$data->city.' / '.$data->pincode.'</td>';
+                        $output_content .='<td>'.$data->sum_insured_value.'</td>';
+                        $output_content .='</tr>';                           
+                        
+                     }              
+                 }
+            }
+            else if(preg_match('#id="consent_details"#',$reader))
+            {
+                if ($costent_decs)
+                 {
+                     $reader =preg_replace('!<tr id="insured_details"></tr>!','',$reader);
+                    
+                     $output_content .='<tr>
+                                          <td>
+                                            <p style="text-align:left;"><b>IX </b><u><b>Consent</b></u><b>: </b></p>';
+                                            
+                     foreach($costent_decs as $dec)
+                     {                                                           
+                        
+                        $output_content .='<p class="western" align=JUSTIFY style="margin-bottom: 0in; line-height: 100%">';
+                        $output_content .='<input type="checkbox"  class="paid" id="'.$dec->code.'" name="'.$dec->code.'" />';
+                        $output_content .='<font face="Frutiger47LightCn, sans-serif"><font size=2 style="font-size: 9pt">'.$dec->question.'</font></font>';
+                        $output_content .='</p>';                           
+                        
+                     }
+                     
+                     $output_content .='<p class="western" align=JUSTIFY style="margin-bottom: 0in"><font face="Arial, sans-serif"><font size=2><b>Date:___/____/______.
+                                            Place:________________. Signature:</b></font></font></p>
+                                    	</td>
+                                      </tr>';              
+                 }
+            }
+            else
+            {
+                $output_content .=str_replace($find_text, $replace_text, $reader);
+            }
+        }
+            
+        //echo $output_content;
+        //exit;
+            
+        fclose($file);            
+    }
+           
+    
+    //html2pdf
+    if(libraries_get_path("html2pdf"))
+	   require_once DRUPAL_ROOT . '/'.libraries_get_path("html2pdf").'/html2pdf.class.php';
+
+    try{
+        $html2pdf = new HTML2PDF('P','A3','en');
+        //$html2pdf = new HTML2PDF('P','A4','en', true, 'UTF-8', array(-5, 5, 25, 5));
+        $html2pdf->pdf->SetDisplayMode('fullwidth');
+        $html2pdf->WriteHTML($output_content);
+        ob_clean();
+        $html2pdf->Output('policy.pdf');
+    }catch(HTML2PDF_exception $e){
+          echo $e;exit;
+        echo 'Sorry Enable to create pdf.Please try after some time.';
+        
+    }
+      
+}
+
+function _received_form_pdf(){    
+        
+    global $user, $base_url;    
+    
+    $values=$_GET;
+//    $values['qid']= 1;    
+  
+    //received_form 
+    if(isset($values['qid']) && !empty($values['qid']))
+    {    
+        $details= received_form($values['qid']);
+        
+        $title = $details['title'];
+        $fullname = $details['fname'].' '.$details['mname'].' '.$details['lname'];
+        $amount = $details['finalpremium'];
+        
+        if ($amount =='' || $amount == NULL)
+        {
+            $amount = $details['basepremium'];
+        }
+            
+        $policy_no=$details['policy_no'];
+        $transaction_date=date("Y-m-d", $details['transaction_date']);
+        
+        //file path to be open
+        $file_path = $base_url.'/sites/all/themes/cigna_ttk_2/html/received_form.html';
+               
+        
+        $file = fopen($file_path, "r") or exit("Unable to open file!");
+        //Output a line of the file until the end is reached
+        
+        $find_text =array('%title%','%fullname%','%amount%','%policy_number%','%transaction_date%');
+        
+        $replace_text =array($title,$fullname,$amount,$policy_no,$transaction_date);
+        
+        $output_content ='';
+        while(!feof($file))
+        {
+            $output_content .=str_replace($find_text, $replace_text, fgets($file));
+        }
+            
+        //echo $output_content;
+        //exit;
+            
+        fclose($file);            
+    }
+    
+    //html2pdf
+    if(libraries_get_path("html2pdf"))
+	   require_once DRUPAL_ROOT . '/'.libraries_get_path("html2pdf").'/html2pdf.class.php';
+
+    try{
+        $html2pdf = new HTML2PDF('P','A4','en');
+        //$html2pdf = new HTML2PDF('P','A4','en', true, 'UTF-8', array(-5, 5, 25, 5));
+        $html2pdf->pdf->SetDisplayMode('fullwidth');
+        $html2pdf->WriteHTML($output_content);
+        ob_clean();
+        $html2pdf->Output('policy.pdf');
+    }catch(HTML2PDF_exception $e){
+          echo $e;exit;
+        echo 'Sorry Enable to create pdf.Please try after some time.';
+        
+    }
+    
+}
+
+function convert_number_to_words($number) {
+
+    $hyphen      = '-';
+    $conjunction = ' and ';
+    $separator   = ', ';
+    $negative    = 'negative ';
+    $decimal     = ' point ';
+    $dictionary  = array(
+        0                   => 'zero',
+        1                   => 'one',
+        2                   => 'two',
+        3                   => 'three',
+        4                   => 'four',
+        5                   => 'five',
+        6                   => 'six',
+        7                   => 'seven',
+        8                   => 'eight',
+        9                   => 'nine',
+        10                  => 'ten',
+        11                  => 'eleven',
+        12                  => 'twelve',
+        13                  => 'thirteen',
+        14                  => 'fourteen',
+        15                  => 'fifteen',
+        16                  => 'sixteen',
+        17                  => 'seventeen',
+        18                  => 'eighteen',
+        19                  => 'nineteen',
+        20                  => 'twenty',
+        30                  => 'thirty',
+        40                  => 'fourty',
+        50                  => 'fifty',
+        60                  => 'sixty',
+        70                  => 'seventy',
+        80                  => 'eighty',
+        90                  => 'ninety',
+        100                 => 'hundred',
+        1000                => 'thousand',
+        1000000             => 'million',
+        1000000000          => 'billion',
+        1000000000000       => 'trillion',
+        1000000000000000    => 'quadrillion',
+        1000000000000000000 => 'quintillion'
+    );
+
+    if (!is_numeric($number)) {
+        return false;
+    }
+
+    if (($number >= 0 && (int) $number < 0) || (int) $number < 0 - PHP_INT_MAX) {
+        // overflow
+        trigger_error(
+            'convert_number_to_words only accepts numbers between -' . PHP_INT_MAX . ' and ' . PHP_INT_MAX,
+            E_USER_WARNING
+        );
+        return false;
+    }
+
+    if ($number < 0) {
+        return $negative . convert_number_to_words(abs($number));
+    }
+
+    $string = $fraction = null;
+
+    if (strpos($number, '.') !== false) {
+        list($number, $fraction) = explode('.', $number);
+    }
+
+    switch (true) {
+        case $number < 21:
+            $string = $dictionary[$number];
+            break;
+        case $number < 100:
+            $tens   = ((int) ($number / 10)) * 10;
+            $units  = $number % 10;
+            $string = $dictionary[$tens];
+            if ($units) {
+                $string .= $hyphen . $dictionary[$units];
+            }
+            break;
+        case $number < 1000:
+            $hundreds  = $number / 100;
+            $remainder = $number % 100;
+            $string = $dictionary[$hundreds] . ' ' . $dictionary[100];
+            if ($remainder) {
+                $string .= $conjunction . convert_number_to_words($remainder);
+            }
+            break;
+        default:
+            $baseUnit = pow(1000, floor(log($number, 1000)));
+            $numBaseUnits = (int) ($number / $baseUnit);
+            $remainder = $number % $baseUnit;
+            $string = convert_number_to_words($numBaseUnits) . ' ' . $dictionary[$baseUnit];
+            if ($remainder) {
+                $string .= $remainder < 100 ? $conjunction : $separator;
+                $string .= convert_number_to_words($remainder);
+            }
+            break;
+    }
+
+    if (null !== $fraction && is_numeric($fraction)) {
+        $string .= $decimal;
+        $words = array();
+        foreach (str_split((string) $fraction) as $number) {
+            $words[] = $dictionary[$number];
+        }
+        $string .= implode(' ', $words);
+    }
+
+    return $string;
+}
+
+function _user_dashboard_documents_locker(){
+    
+    global $user;
+    $output='';
+   
+/* 
+    $output.='<div class="myaccount">
+                    <article>
+                      <h2>'.$user->data['first_name'].'&nbsp;'.$user->data['last_name'].'</h2>
+                            <menu>
+                                <ul id="user_profile_menu">
+                                    <li><a href="#" data-reveal-id="myModal420" data-animation="none">MODIFY PREFERENCES</a></li>
+                                    <li><a href="#">NOTIFICATIONS&nbsp;</a></li>
+                                    <li><a href="#">DOCUMENTS LOCKER</a></li>
+                                    <li><a href="#">MY EXPIRED POLICIES</a></li>
+                                </ul>
+                            </menu>
+                        </article>
+                    </div>';
+*/    
+    $output.='<div class="myaccount">
+                    <article>
+                      <h2>'.$user->data['first_name'].'&nbsp;'.$user->data['last_name'].'</h2>
+                            <menu>'.get_topLeftDashboard_menu().'
+                            </menu>
+                        </article>
+                    </div>';
+    
+    $form=drupal_get_form('client_login_documents_locker_form');
+    $output.=drupal_render($form);
+             
+    return $output;
+}
+
+function client_login_documents_locker_form($form,&$form_state){
+    
+    global $user,$base_url, $theme;
+    
+    drupal_add_js(drupal_get_path('theme',$theme).'/js/modify_preference.js');
+    
+    $query=db_select('applications','a');
+    $query->innerJoin('get_quote','q','q.qid=a.quote_id');
+    $query->fields('a')
+          ->fields('q')
+          ->condition('a.user_id',$user->uid)
+          ->condition('a.status','completed');
+               
+    $results=$query->execute()->fetchAll();
+        
+/*    
+    $form['policy_link']=array(
+        '#markup'=>'<div class="policy_generate">'.l('Generate Policy Receipt','dashboard/documents-locker/policy-generator').'</div>',
+        
+    );
+    $form['tax_link']=array(
+    
+        '#markup'=>'<div class="tax_generate">'.l('Generate Tax Receipt','dashboard/documents-locker/tax-generator').'</div>',
+    );
+*/
+
+    //table rows
+    
+    if($results)
+    {
+        $cnt = 1;
+        $row_data ='<tr><th>Sr</th><th>Policy No</th><th></th><th></th></tr>';
+        
+        foreach($results as $data)
+        {
+            $row_data .='<tr>';
+            $row_data .='<td><b>'.$cnt.'</b></td>';
+            $row_data .='<td><b>'.$data->policy_no.'</b></td>';
+            $row_data .='<td><a href="'.url('proposal-file').'?policynum='.$data->policy_no.'&qid='.$data->qid.'" target="_blank">Policy Receipt</a></td>';
+            $row_data .='<td><a href="'.url('tax-generator').'?policynum='.$data->policy_no.'&qid='.$data->qid.'" target="_blank">Tax Receipt</a></td>';        
+            $row_data .='</tr>';
+            
+            $cnt++;    
+        }
+    }
+    else
+    {
+        $row_data ='<tr><th>No documents available.</th></tr>';
+    }
+
+    $form['policy_document_table']=array(
+        '#markup'=>'<table id="policy_document_table" border="" >'.$row_data.'</table>',
+    );
+    
+    $form['preference_pop'] =array(
+        '#markup' => '<div id="myModal420" class="reveal-modal">
+<table border="0" cellspacing="0" cellpadding="0" width="100%"  style="bgcolor:#000000;">
+	<tr>
+		<td width="270" style="border:none;">
+			<table border="1" cellspacing="1" cellpadding="1"  class="custom-user-profile">
+				<tr>
+					<td class="active" id="change-password-td">
+					<a href="javascript:void(0);" onclick="return fnc_ChangeTab(1);">Change Password</a></td>
+				</tr>
+				<tr>
+					<td id="update-profile-td"><a href="javascript:void(0);" onclick="return fnc_ChangeTab(2);">Update Profile</a></td>
+				</tr>
+				<tr>
+					<td id="email-settings-td"><a href="javascript:void(0);" onclick="return fnc_ChangeTab(3);">Email Settings</a></td>
+				</tr>
+			</table>
+		</td>
+		<td style="border:none;" valign="top">
+			<div id="message"></div>
+			<div id="change-password" style="display:block;"> 
+			</br><p>
+				Lorem ipsum dolor sit amet, consectetur adipisicing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. </p>
+			'.drupal_render(drupal_get_form("client_login_form")).'
+			</div>
+			<div id="update-profile" style="display:none;"> 
+				</br><p>
+				Lorem ipsum dolor sit amet, consectetur adipisicing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. </p>
+				'.drupal_render(drupal_get_form("client_login_update_profile_form")).'
+			</div>
+			<div id="email-settings" style="display:none;"></br><p>
+				Lorem ipsum dolor sit amet, consectetur adipisicing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. </p>
+				'.drupal_render(drupal_get_form("client_login_update_email_form")).'
+			</div>
+		</td>
+	</tr>
+</table>
+<a class="close-reveal-modal"><img src="'.$base_url.'/sites/all/themes/cigna_ttk_2/images/closed.png"/></a>
+</div>',
+    );
+    
+    
+    return $form;
+    
+}
+function documents_locker_policy_generator($form,&$form_state){
+    
+     global $user,$base_url;     
+     
+     $query=db_select('applications','a')
+            ->fields('a')
+            ->condition('a.user_id',$user->uid)
+            ->execute()->fetchAll();
+     
+     $options=array();  
+     if(!empty($query)){
+        
+        foreach($query as $policy){ 
+            $options[$policy->policy_no]=$policy->policy_no;
+        }   
+     }
+     
+    $policy_selected=!empty($form_state['values']['policy_list']) ? $form_state['values']['policy_list'] : key($options);
+    $form['policy_list']=array(
+        '#type'=>'select',
+        '#title' => t('Select Policy Number'),
+        '#options'=>$options,
+        '#ajax'=>array(
+            'callback'=>'_ajax_policy_selection_callback',
+            'wrapper'=>'policy_replace',  
+        ),
+        '#default_value'=>$policy_selected,
+    );
+    
+    $form['selected_submit'] = array(
+        '#type' => 'markup',
+        '#prefix' => '<div id="policy_replace">',
+        '#suffix' => '</div>',
+        '#markup'=>'<a href="'.url("pdf-file").'?pid='.$policy_selected.'&uid='.$user->uid.'" target="_blank">Generate Pdf</a>',
+    );
+    
+    return $form;
+        
+}
+function _ajax_policy_selection_callback($form,&$form_state){
+    
+    global $user;
+    $element = $form['selected_submit'];
+    $element['#markup']='<a href="'.url("pdf-file").'?pid='.$form_state['values']['policy_list'].'&uid='.$user->uid.'" target="_blank">Generate Pdf</a>';
+    return $element;
+    
+}
+function documents_locker_tax_generator($form,&$form_state){
+    
+     global $user,$base_url;
+     $query=db_select('applications','a')
+            ->fields('a')
+            ->condition('a.user_id',$user->uid)
+            ->execute()->fetchAll();
+     $options=array();  
+     if(!empty($query)){
+        
+        foreach($query as $policy){ 
+            $options[$policy->policy_no]=$policy->policy_no;
+        }   
+     }
+    $policy_selected=!empty($form_state['values']['policy_list']) ? $form_state['values']['policy_list'] : key($options);
+    $form['policy_list']=array(
+        '#type'=>'select',
+        '#title' => t('Select Policy Number'),
+        '#options'=>$options,
+        '#ajax'=>array(
+            'callback'=>'_ajax_policy_selection_callback',
+            'wrapper'=>'policy_replace',  
+        ),
+        '#default_value'=>$policy_selected,
+    );
+    
+    $form['selected_submit'] = array(
+        '#type' => 'markup',
+        '#prefix' => '<div id="policy_replace">',
+        '#suffix' => '</div>',
+        '#markup'=>'<a href="'.url("pdf-file").'?pid='.$policy_selected.'&uid='.$user->uid.'" target="_blank">Generate Pdf</a>',
+    );
+    
+    return $form;
+    
+}
+/**
+ * This function can be called directly or can be called from menu.
+ */
+function _user_profile() {
+    
+	global $form;
+	return theme("user_custom_profile");
+    
+}
+
+function client_login_theme($form){
+    return array(
+        'user_custom_profile'=>array(
+            'render element' => 'element',
+            'variables' => array('policies' => NULL),
+            'template'=>'user-custom-profile'
+        
+        ),
+    );
+}
+
+function template_preprocess_user_custom_profile(&$variables){
+    
+    global $user;
+       
+    $query=db_select('applications','a');
+    $query->innerJoin('get_quote','q','q.qid=a.quote_id');
+    //$query->groupBy('a.status');
+    $query->addField('a','status', 'applications_status');
+    $query->fields('a')
+          ->fields('q')
+          ->condition('a.user_id',$user->uid)
+          ->condition('a.status',array('partial','completed'),'IN')
+          ->orderBy('a.status');
+     
+    //$query = db_query("select app_id, status from applications order by status")->fetchAll();          
+    $results=$query->execute()->fetchAll();
+    
+    //echo "1---<pre>";
+    //print_r($query);
+    //print_r($results);
+    //exit;
+    
+    //dpr($results);exit;
+    foreach($results as $result){
+        
+        //dpr($result);exit;
+        $planid=db_select('field_data_field_plan_id','i');
+        $planid->innerJoin('node','n','n.nid=i.entity_id');
+        $planid->fields('i',array('entity_id'))
+                ->condition('n.status',1)
+                ->condition('i.entity_id',$result->planid);
+                         
+       $planid=$planid->execute()->fetchField();
+       
+       /*
+       if(!empty($result->policy_start_date)){
+         
+            //$startingDate=strtotime($result->policy_start_date);
+            //$valid_days=(((int)($result->tenure)) * 365)-1;
+            //$valid_end_date = date('d M Y',strtotime(date("j/n/Y", $startingDate) . " + ".$valid_days." day"));
+            //$result->policy_end_date=$valid_end_date;
+       }*/
+       
+       $result->planid=$planid;   
+       $policy[$result->qid]=$result;
+       
+    }
+    
+        
+     $variables['policies'] = $policy;
+     
+     //echo "<pre>";
+     //print_r($variables);
+     //exit;   
+     
+}
+/**
+ * Implements hook_block_info().
+ */
+function client_login_block_info() {
+  // This example comes from node.module.
+  $blocks['ajax logout'] = array(
+    'info' => t('ajax_logout'),
+    'cache' => DRUPAL_NO_CACHE,
+  );
+  return $blocks;
+}
+
+/**
+ * Implements hook_block_view().
+ */
+function client_login_block_view($delta = '') {
+  global $base_url;
+
+  $block = array();
+
+  switch ($delta) {
+    case 'ajax_logout':
+      // For usability's sake, avoid showing two login forms on one page.
+      //if ($user->uid !=0) {
+
+        $block['subject'] = t('Logout');
+        $block['content'] =  "test".l("Logout", $base_url."/user/logout", $attributes);
+      //}
+  }
+  return $block;
+}
+
+function client_login_form($form, &$form_state) {
+	/*$form['#action'] = url(current_path(), array('query' => drupal_get_destination(), 'external' => FALSE));
+	if(isset($form_state['storage'])) {
+		return $form;
+	}*/
+	$form["wrapper"] = array("#markup" => "<div class='inline-messages' id='message'></div>");
+	$form['pwd'] = array('#type' => 'password',
+	'#title' => t('Old Password'),
+	'#size' => 15,
+	'#required' => TRUE,
+	);
+	$form['new_pass'] = array('#type' => 'password',
+	'#title' => t('New Password'),
+	'#size' => 15,
+	'#required' => TRUE,
+	);
+	$form['comfirm_pass'] = array('#type' => 'password',
+	'#title' => t('Confirm New Password'),
+	'#size' => 15,
+	'#required' => TRUE,
+	);
+	$form['submit'] = array(
+	'#type' => 'button',
+	'#value' => t('Submit'),
+	'#ajax' => array(
+	'callback' => 'client_login_password_js',
+	'wrapper' => 'message',
+	'method' => 'replace',
+	'effect' => 'fade',
+	),
+	);
+	return $form;
+}
+
+function client_login_password_validate() {
+	global $user;
+    $account = user_load($user->uid);
+	require_once DRUPAL_ROOT . '/' . variable_get('password_inc', 'includes/password.inc');
+	$hash = _password_crypt('sha512', $_POST['pwd'], $account->pass);
+	if ( strcmp($hash, $account->pass)!=0) {
+		form_set_error('pwd', t("Old password is wrong. "));
+	}
+	if($_POST['new_pass']!=$_POST['comfirm_pass']){
+		form_set_error('new_pass', t("Your new password is not matching with the confirm password."));
+	}
+}
+
+function client_login_password_update() {
+	global $user;
+    $account = user_load($user->uid);
+	require_once DRUPAL_ROOT . '/' . variable_get('password_inc', 'includes/password.inc');
+    $pass = user_hash_password(trim($_POST['new_pass']));
+	$num_updated = db_update('users') // Table name no longer needs {}
+	->fields(array(
+    'pass' => $pass
+	))
+	->condition('uid', $user->uid, '=')
+	->execute();
+	drupal_set_message("User password has changed successfully.","status","FALSE");
+}
+
+function client_login_password_js(){
+	client_login_password_validate();
+	$messages = theme('status_messages');
+	if($messages==""){
+		client_login_password_update();
+		$messages = theme('status_messages');
+	}
+	return "<div id='message' class='inline-messages'>$messages</div>";
+}
+
+function client_login_update_profile_form($form, &$form_state){
+	
+	/*Fetch users profile*/
+	global $user;
+	$account = user_load($user->uid);
+
+	$profile = profile2_load_by_user($account, 'personal_details');
+	$mobile = $profile->field_mobile["und"]["0"]["number"];
+	$landline = $profile->field_landline["und"]["0"]["number"];
+	$address = $profile->field_address["und"]["0"]["thoroughfare"];
+	//$email = $profile->field_secondary_email["und"]["0"]["email"];
+	
+	/*End of fetching user's profile*/
+	$form["wrapper"] = array("#markup" => "<div class='inline-messages' id='message'></div>");
+	$form['address'] = array('#type' => 'textarea',
+	'#title' => t('Address'),
+	'#size' => 15,
+	'#value'=>$address
+	);
+	$form['mobile'] = array('#type' => 'textfield',
+	'#title' => t('Mobile Number'),
+	'#size' => 15,
+	'#value'=>$mobile
+	);
+	$form['landline'] = array('#type' => 'textfield',
+	'#title' => t('Landline Number'),
+	'#size' => 15,
+	'#value'=>$landline
+	);
+	/*$form['actions'] = array('#type' => 'actions');
+	$form['actions']['submit'] = array('#type' => 'submit',
+	'#value' => t('Log in'),
+	);*/
+	$form['submit'] = array(
+	'#type' => 'button',
+	'#value' => t('Submit'),
+	'#ajax' => array(
+	'callback' => 'client_login_update_profile_js',
+	'wrapper' => 'message',
+	'method' => 'replace',
+	'effect' => 'fade',
+	),
+	);
+	return $form;
+}
+
+function client_login_update_profile_validation(){
+	
+	if(!is_numeric($_POST['mobile'])){
+		form_set_error('mobile', t("Mobile no should be numeric."));
+	}
+	if(!is_numeric($_POST['landline'])){
+		form_set_error('landline', t("Landline no should be numeric."));
+	}
+}
+
+function client_login_update_profile_js(){
+	
+	client_login_update_profile_validation();
+	$messages = theme('status_messages');
+	
+	//Update profile if no errors found.
+	if($messages==""){
+		client_login_update_profile();
+		$messages = theme('status_messages');
+	}
+	return "<div id='message' class='inline-messages'>$messages</div>";	
+}
+
+function client_login_update_profile(){
+
+	global $user;
+    $account = user_load($user->uid);
+	$profile = profile2_load_by_user($account, 'personal_details');
+	
+	$profile->field_mobile["und"]["0"]["number"] = $_POST["mobile"];
+	$profile->field_landline["und"]["0"]["number"] = $_POST["landline"];
+	$profile->field_address["und"]["0"]["thoroughfare"] = $_POST["address"];
+	
+	profile2_save($profile); 
+	drupal_set_message("User profile has changed successfully.","status","FALSE");
+}
+
+function client_login_update_email_form($form, &$form_state){
+	
+	/*Fetch users profile*/
+	global $user;
+	$account = user_load($user->uid);
+
+	$profile = profile2_load_by_user($account, 'personal_details');
+	$secondary_email = $profile->field_secondary_email["und"]["0"]["email"];
+	
+	/*End of fetching user's profile*/
+	$form["wrapper"] = array("#markup" => "<div class='inline-messages' id='message'></div>");
+	$form['mail'] = array('#type' => 'textfield',
+	'#title' => t('Email1 (Primary)'),
+	'#size' => 30,
+	'#value'=>$account->mail
+	);
+	$form['secondary_email'] = array('#type' => 'textfield',
+	'#title' => t('Email1 (Secondary)'),
+	'#size' => 30,
+	'#value'=>$secondary_email
+	);
+	/*$form['actions'] = array('#type' => 'actions');
+	$form['actions']['submit'] = array('#type' => 'submit',
+	'#value' => t('Log in'),
+	);*/
+	$form['submit'] = array(
+	'#type' => 'button',
+	'#value' => t('Submit'),
+	'#ajax' => array(
+	'callback' => 'client_login_update_email_js',
+	'wrapper' => 'message',
+	'method' => 'replace',
+	'effect' => 'fade',
+	),
+	);
+	return $form;
+}
+
+function client_login_update_email_validation(){
+	if (!valid_email_address($_POST['mail'])) {
+		form_set_error('mail', t('You must enter a valid primary e-mail address.'));
+	}
+	if (!valid_email_address($_POST['secondary_email'])) {
+		form_set_error('secondary_email', t('You must enter a valid secondary e-mail address.'));
+	}
+}
+
+function client_login_update_email_js(){
+	client_login_update_email_validation();
+	$messages = theme('status_messages');
+	
+	//Update profile if no errors found.
+	if($messages==""){
+		client_login_update_email();
+		$messages = theme('status_messages');
+	}
+	return "<div id='message' class='inline-messages'>$messages</div>";	
+}
+
+function client_login_update_email(){
+	global $user;
+    $account = user_load($user->uid);
+	$profile = profile2_load_by_user($account, 'personal_details');
+	$profile->field_secondary_email["und"]["0"]["email"] = $_POST["secondary_email"];
+	profile2_save($profile); 
+
+	user_save($account,$_POST);
+	drupal_set_message("User email has changed successfully.","status","FALSE");
+}
+
+function client_login_form_alter(&$form, &$form_state, $form_id){
+	
+	global $base_url;
+	if($form["#id"]=="user-register-form"){
+		unset($form["account"]["mail"]["#description"]);
+		$form["actions"]["submit"]["#value"] = "Register";
+		$form['field_first_name'] = array(
+		'#type' => 'textfield',
+		'#size' => 20,
+		'#required' => TRUE,
+		'#title' => t('Your Name'),
+		'#weight' => 0,
+		'#prefix'=> '<div style="padding-botton:30px;padding-top:10px;height:60px;"><p><strong>A few details about you</strong>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</p></div>
+		'
+		);
+		$form['field_last_name'] = array(
+		'#type' => 'textfield',
+		'#size' => 20,
+		'#required' => TRUE,
+		'#weight' => 1,
+		);
+		$form['field_mobile'] = array(
+		'#type' => 'textfield',
+		'#size' => 30,
+		'#required' => TRUE,
+		'#title' => t('Your Mobile Number'),
+		'#weight' => 3,
+		);
+		$form['account']['mail'] = array(
+		'#type' => 'textfield',
+		'#size' => 30,
+		'#required' => TRUE,
+		'#title' => t('Your E-mail id'),
+		'#weight' => 4,
+		'#maxlength' => 254,
+		);
+		$form['field_terms_conditions'] = array(
+        '#type' => 'checkboxes',
+		'#size' => 14,
+		'#required' => TRUE, 		
+		'#weight' => 10,
+        '#options' => array( 1 =>'I hereby accept the Terms & Conditions', ),
+		);    
+        
+	}else if($form["#id"]=="user-login"){
+		$form['pass']["#size"] = 30;
+		//echo '<pre>';print_r($form['name']['#title']);die;
+		unset($form['actions']);
+		/*$form['actions'] = array(
+            "#type" => "actions",
+            "submit" => Array
+                (
+                    "#type" => "submit",
+                    "#value" => "LOGIN",
+					"#weight" => 2,
+                )
+
+        );*/
+		$form['submit'] = array(
+		'#type' => 'submit',
+		'#size' => 14,
+		//'#required' => TRUE,
+		'#title' => t('Login'),
+		'#weight' => 3,
+		'#value' => 'LOGIN'
+		);
+
+		$enabled_links = variable_get('ajax_register_enabled_links', array('login', 'register', 'password','name','agent'));
+		$links = _ajax_user_links($enabled_links);
+		
+		unset($links[0]);
+		$form['links'] = array('#weight'=>5,'#markup' => theme('item_list', array('items' => $links)));
+	}
+	return $form;
+}
+
+function client_login_form_user_login_alter(&$form, &$form_state) {
+  $form['name']['#title'] = t('test');
+  $form['name']['#description'] = t('Enter your e-mail address.');
+  $form['name']['#element_validate'][] = 'email_registration_user_login_validate';
+  $form['pass']['#description'] = t('Enter the password that accompanies your e-mail.');
+}
+
+function client_register_form($form, &$form_state) {
+	$form['#validate'] = "user_register_validate";
+	$form['#submit'] = "user_register_submit";
+	$form['#title'] = "New User? Add the following details and register";
+	$form['field_first_name'] = array(
+		'#type' => 'textfield',
+		'#size' => 20,
+		'#required' => TRUE,
+		'#title' => t('Your Name'),
+		'#weight' => -2,
+		);
+		$form['field_last_name'] = array(
+		'#type' => 'textfield',
+		'#size' => 20,
+		'#required' => TRUE,
+		'#title' => t('Last Name'),
+		'#weight' => -1,
+		);
+		$form['field_mobile_no'] = array(
+		'#type' => 'textfield',
+		'#size' => 30,
+		'#required' => TRUE,
+		'#title' => t('Your Mobile Number'),
+		'#weight' => 3,
+		);
+		$form['account']['mail'] = array(
+		'#type' => 'textfield',
+		'#size' => 30,
+		'#required' => TRUE,
+		'#title' => t('Your E-mail id'),
+		'#weight' => 4,
+		'#maxlength' => 254,
+		);
+		$form['field_terms_conditions'] = array(
+		'#type' => 'checkbox',
+		'#size' => 5,
+		'#required' => TRUE,
+		'#title' => t('I hereby accept the Terms & Conditions'),
+		'#weight' => 5,
+		//'#value' => 0
+		);
+		
+		$form['submit'] = array(
+		'#type' => 'submit',
+		'#weight' => 6,
+		'#value' => t('Register'),
+		);
+	return $form;
+}
+
+function client_login_block_view_alter(&$data, $block){
+	
+	if ($block->delta == 'ajax_register_block') {
+		global $user;
+
+		if($user->uid == 0){
+			$enabled_links = variable_get('ajax_register_enabled_links', array('login', 'register', 'password','name','agent','logout'));
+			$items = _ajax_user_links($enabled_links);
+			$data["content"]  = l('Login','user'); 
+		}else{
+			$links = array();
+			$options['attributes']['title'] = t('Logout User');
+			$links[] = l(t('Logout'), 'user/logout', $options);
+			$data["content"]  =$links[0];
+		}
+	}
+}
+
+function _ajax_user_links($links_enabled, $form_id = NULL) {
+
+  $links = array();
+
+  // Build classes for ajax modal link.
+  $classes = array();
+  $classes[] = 'ctools-use-modal';
+  $classes[] = 'ctools-modal-ctools-ajax-register-style';
+
+  // Provide default options for ajax modal link.
+  $options = array(
+    'attributes' => array(
+      'class' => $classes,
+      'rel' => 'nofollow',
+    )
+  );
+
+  // Add login button.
+  if (in_array('login', $links_enabled) && (stripos($form_id, 'user_login') === FALSE)) {
+    $options['attributes']['title'] = t('Login');
+    $links[] = l(t('Login'), 'user', $options);
+  }
+
+  // Add register button.
+  $user_registration_allowed = variable_get('user_register', USER_REGISTER_VISITORS_ADMINISTRATIVE_APPROVAL);
+  if (in_array('register', $links_enabled) && $form_id != 'user_register_form' && $user_registration_allowed) {
+    $options['attributes']['title'] = t('New User? Add the following details and register');
+    $links[] = l(t('> Register Now'), 'user/register', $options);
+  }
+
+  // Add request password button.
+  if (in_array('password', $links_enabled) && $form_id != 'user_pass') {
+    $options['attributes']['title'] = t('Forgot Password?');
+    $links[] = l(t('> Forgot Password?'), 'user/password', $options);
+  }
+
+  // Add request username button.
+  if (in_array('name', $links_enabled) && $form_id != 'user_pass') {
+    $options['attributes']['title'] = t('Forgot Username?');
+    $links[] = l(t('Forgot Username?'), 'ajax_register/password/nojs', $options);
+  }
+ 
+  // Add request agent login button.
+  if (in_array('agent', $links_enabled) && $form_id != 'user_login') {
+    $options['attributes']['title'] = t('Agent Login?');
+    $links[] = l(t('Agent Login?'), 'ajax_register/login/nojs', $options);
+  }
+  return $links;
+}
+
+function client_login_menu_alter(&$items) {
+	$items['ajax_register/%/%ctools_js']['page callback'] = 'ajax_user_register_page_callback';
+}
+
+/**
+ * Returns USER LOGIN / REGITER / PASSWORD form.
+ * @param $form_type
+ *   Type of form that should be loaded.
+ * @param $js
+ *   Show whether user has enabled js in his browser.
+ */
+function ajax_user_register_page_callback($form_type, $js) {
+
+  // Check whether js is enabled.
+  if ($js) {
+
+    // Include ctools modal plugin.
+    ctools_include('modal');
+
+    $form_state = array('ajax' => TRUE);
+
+    // Array with ajax response.
+    $commands = array();
+
+    if ($form_type == 'password') {
+      // Show USER PASSWORD form.
+      module_load_include('pages.inc', 'user');
+      $form_state['title'] = t('Request new password');
+      $commands = ctools_modal_form_wrapper('user_pass', $form_state);
+    }
+    elseif ($form_type == 'register') {
+      // Show USER REGISTER form.
+      $form_state['title'] = t('New User? Add the following details and register');
+      $commands = ctools_modal_form_wrapper('user_register_form', $form_state);
+    }
+    elseif ($form_type == 'login') {
+      // Show USER LOGIN form.
+      $form_state['title'] = t('Login');
+      $commands = ctools_modal_form_wrapper('user_login', $form_state);
+    }
+
+    // If form was submited.
+    if (!empty($form_state['executed'])) {
+      $commands = _ajax_register_execute_form($form_type, $form_state);
+    }
+    return array('#type' => 'ajax', '#commands' => $commands);
+  }
+  else {
+    // If user has no js support redirect him to standart drupal forms.
+    drupal_goto('user/' . $form_type);
+  }
+}
+
+
+//for dashboard top left menu
+function get_topLeftDashboard_menu(){
+    
+        global $user, $base_url, $theme;
+        //validate proposer as a adult.
+        $arg = arg();
+        
+        $output ='<ul id="user_profile_menu">';
+        
+        $rightmenu = array( 'MODIFY PREFERENCES' => '#',
+                            'NOTIFICATIONS' => 'dashboard/notifications',
+                            'DOCUMENTS LOCKER' => 'dashboard/documents-locker',
+                            'MY EXPIRED POLICIES' => 'dashboard/my-expiried-policies',
+                           );
+        
+        $total_rmenu = count($rightmenu);
+		$i = 0;
+        
+        foreach ( $rightmenu as $k => $v){ 
+            
+            if (++$i === $total_rmenu)
+    			{
+    				$output .='<li class="last">';
+    			}
+    			else
+    			{
+    				$output .='<li>';
+    			}
+                            
+            if(isset($arg[0]) && isset($arg[1]))
+            {
+                $val = drupal_get_path_alias($arg[0].'/'.$arg[1]);
+                
+                //print "url : ";
+                //print $val; exit;                              
+                
+                if ( $val == $v)
+                {   
+                    if ($k == 'MODIFY PREFERENCES')
+                    {                        
+                        $output .= '<a href="" data-reveal-id="myModal420" data-animation="none" class="active">'.$k.'</a></li>';                        
+                    }
+                    else
+                    {
+                        $output.= '<a href="'.url($v).'" class="active">'.$k.'</a></li>';
+                    }
+                }
+                else
+                {   
+                    if ($k == 'MODIFY PREFERENCES')
+                    {
+                            $output .= '<a href="" data-reveal-id="myModal420" data-animation="none" >'.$k.'</a></li>';                        
+                    }
+                    else
+                    {
+                        $output.= '<a href="'.url($v).'">'.$k.'</a></li>';
+                    }
+                }
+            }
+            else{  
+                    if ($k == 'MODIFY PREFERENCES')
+                    {
+                            $output .= '<a href="" data-reveal-id="myModal420" data-animation="none" >'.$k.'</a></li>';                       
+                    }
+                    else
+                    {
+                        $output.= '<a href="'.url($v).'">'.$k.'</a></li>';
+                    }
+                }
+        }
+        
+        
+        $output .='</ul>';       
+        return $output;
+}
+?>

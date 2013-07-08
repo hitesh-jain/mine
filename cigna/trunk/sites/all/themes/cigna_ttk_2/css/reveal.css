@@ -1,0 +1,124 @@
+/*	--------------------------------------------------
+	Reveal Modals
+	-------------------------------------------------- */
+		
+	.reveal-modal-bg {
+	position: fixed;
+	height: 100%;
+	width: 100%;
+	background: #000;
+	background: rgba(0, 0, 0, .8);
+	z-index: 100;
+	display: none;
+	top: 0;
+	left: 0;
+	z-index:9999;
+}
+.reveal-modal {
+	visibility: hidden;
+	top: 100px !important;
+	left: 37%;
+	margin-left: -300px;
+	width:70.5%;
+	background: #fff url(modal-gloss.png) no-repeat -200px -80px;
+	position: fixed;
+	z-index: 101;
+	padding: 30px 40px 34px;
+	-moz-box-shadow: 0 0 10px rgba(0, 0, 0, .4);
+	-webkit-box-shadow: 0 0 10px rgba(0, 0, 0, .4);
+	-box-shadow: 0 0 10px rgba(0, 0, 0, .4);
+	z-index: 999999999;
+	min-height:338px;
+}
+.revealpopdetails {
+	float:left;
+	border-bottom:2px dotted #ddd;
+	width:100%;
+	padding-bottom: 20px;
+	margin-bottom: 40px;
+}
+.revealpopdetails h1 {
+	float: none !important;
+	padding-top:0px !important;
+	font-size:24px !important;
+	color:#29abe2 !important;
+	font-weight:normal !important;
+	line-height:33px;
+	float:left;
+	width: 60%;
+}
+.revealpopdetails .step {
+	background: url("../images/arrow1.png") no-repeat scroll right center transparent;
+	color: #8C8C8C;
+	float: right;
+	padding-right: 18px;
+	margin-top:-21px;
+}
+
+
+.forwardsteps {
+	float:left;
+	width:100%;
+}
+
+.forwardsteps .step1{
+	float:left;
+	width:25%;
+	height:69px;
+	font-size:16px;
+	color:#4d4d4d;
+}
+
+.forwardsteps .step2{
+	float:left;
+	width:25%;
+	height:69px;
+	font-size:16px;
+	color:#4d4d4d;	
+}
+
+.forwardsteps .step3{
+	float:left;
+	width:25%;
+	height:69px;
+	font-size:16px;
+	color:#4d4d4d;	
+}
+
+.forwardsteps .step4{
+	float:left;
+	width:25%;
+	height:69px;
+	font-size:16px;
+	color:#4d4d4d;	
+}
+
+.reveal-modal.small {
+	width: 200px;
+	margin-left: -140px;
+}
+.reveal-modal.medium {
+	width: 400px;
+	margin-left: -240px;
+}
+.reveal-modal.large {
+	width: 600px;
+	margin-left: -340px;
+}
+.reveal-modal.xlarge {
+	width: 800px;
+	margin-left: -440px;
+}
+.reveal-modal .close-reveal-modal {
+	font-size: 22px;
+	line-height: .5;
+	position: absolute;
+	top: 8px;
+	right: 11px;
+	color: #aaa;
+	text-shadow: 0 -1px 1px rbga(0, 0, 0, .6);
+	font-weight: bold;
+	cursor: pointer;
+} 
+
+.reveal-modal.videoplaydata{ padding:5px !important; width:51% !important; margin-left: -190px !important;}

@@ -1,0 +1,53 @@
+.mypets{ /*header of 1st demo*/
+cursor: hand;
+cursor: pointer;
+padding: 2px 5px;
+border: 1px solid gray;
+background: #E1E1E1;
+}
+
+.openpet{ /*class added to contents of 1st demo when they are open*/
+background: yellow;
+}
+
+.technology{ /*header of 2nd demo*/
+cursor: hand;
+cursor: pointer;
+padding-top:0px;
+}
+
+.technology span.accordprefix{margin-top:-10px;}
+
+.openlanguage{ /*class added to contents of 2nd demo when they are open*/}
+.closedlanguage{ /*class added to contents of 2nd demo when they are closed*/}
+.thelanguage{
+	position:absolute;
+	float:left;
+	width:200px;
+	height:200px;
+	margin-left: -113px;
+    margin-top: 24px;
+	padding:17px;
+	text-align:left;
+	background: url(../images/add_bg.png) no-repeat left top;
+}
+
+.thelanguage.nextdrop{margin-left: -155px !important; margin-top: -26px; margin-left: -112px\9 !important; margin-top: 0px\9;}
+
+.thelanguage .choosetitle{
+	font-size:14px;
+	font-weight:bold;
+	color:#333333;
+	float:left;
+	width:100%;
+	margin-top:3px;
+	}
+	
+.thelanguage .oneyars{float: left; padding-top: 13px; width: 100%;}	
+.thelanguage .oneyars b{ border-top:0px solid #000; text-transform:uppercase; font-size:12px; color:#333333; font-weight:bold; float:left; width:100%; 
+ border-bottom:1px solid #e8f6f9; padding-bottom: 7px; margin-top:0px; padding-top:7px;}
+ 
+ .thelanguage .oneyars1{float: left; padding-top: 0px; width: 100%;}	
+.thelanguage .oneyars1 b{ border-top:0px solid #000; text-transform:uppercase; font-size:12px; color:#333333; font-weight:bold; float:left; width:100%; 
+ border-bottom:1px solid #e8f6f9; padding-bottom: 7px; margin-top:0px; padding-top:7px;}
+ .thelanguage .closedlanguage span{display: none;}

@@ -1,0 +1,294 @@
+<?php
+
+/**
+ * Impelements hook_init()
+ * 
+ */
+
+function news_media_init(){
+    
+    
+    
+}
+
+/**
+ * Impelements hook_permission()
+ * 
+ */
+function news_media_permission()
+{
+    return array(
+        'show news media' =>  array(
+            'title' => t('Show news & media'),
+        ),
+		'administrator news media'=>array(
+		'title' => t('Admin news & media'),
+	),
+    );
+}
+/**
+ * Impelements hook_node_info_type()
+ * 
+ */
+function news_media_node_info() {
+  return array(
+    'news_media' => array(
+      'name' => t('News & Media'),
+      'base' => 'news_media',
+      'description' => t('A News & Media content type'),
+      'has_title' => TRUE,
+      'title_label' => t('News & Media title'),
+      'locked' => FALSE,
+    ),
+  );
+}
+/**
+ * 
+ * Implements hook_form()
+ */
+function news_media_form($node,$form_state)
+{
+    $type = node_type_get_type($node);
+    $form['title'] = array(
+		'#type' => 'textfield',
+		'#title' => check_plain($type->title_label),
+		'#default_value' => !empty($node->title) ? $node->title : '',
+		'#description' => t('Upto 128 characters.'), 
+		'#required' => TRUE, 
+    );
+    return $form;
+}
+/**
+ * 
+ * Impelements hook_menu()
+ */
+function news_media_menu(){
+    
+      $items['news-and-media'] = array(
+        'title' =>t('News & Media'),
+        'description' => 'News & Media',
+        'page callback' => 'list_news_media',
+        'access arguments' => array('show news media'),
+    );
+    /*
+	 $items['admin/list/news-and-media'] = array(
+		'title' => 'News & Media Listing',
+		'page callback' => 'drupal_get_form',
+		'page arguments'=>array('admin_list_news_media'),
+		'access arguments' => array('administrator news media'),
+		
+	);*/
+    return $items;
+
+}
+/**
+ * Callback function for news_media menu
+ * 
+ */
+function list_news_media(){
+    
+     return theme('news_media');
+    
+}
+
+/**
+ * Impelements hook_theme()
+ * 
+ * Returning name of template file
+ */
+function news_media_theme(){
+    
+    return array(
+        'news_media'=>array(
+            'render element' => 'element',
+            'variables' => array('news_media' => NULL),
+            'template'=>'news-media',
+        
+        ),
+    );
+}
+
+/**
+ * Implements template_preprocess_THEME_ARRAY_KEY
+ * Defines variables required for template file
+ * 
+ */
+function template_preprocess_news_media(&$variables){
+    
+    global $language,$base_url,$theme;    
+    drupal_add_css(drupal_get_path('module','news_media').'/css/menu_a_style.css');
+    //drupal_add_js(drupal_get_path('module','news_media').'/js/jquery-1.9.1.js');
+    drupal_add_js(drupal_get_path('module','news_media').'/js/jquery.nestedAccordion.js');
+    drupal_add_js(drupal_get_path('module','news_media').'/js/news_media.js');
+    
+    $variables['news_media'] = array();
+	$variables['news_media_pager'] = '';
+   
+    $archives=monthly_archive();
+    if(empty($archives)) {
+			$archives = t('No Archives Found');
+    }else{
+        foreach($archives as $year_key=>$year){
+        
+            foreach($year as $month_key=>$month){
+            
+                foreach($month as $node_value){
+                     $node=node_load($node_value); 
+                    $variables['news_media'][$year_key][$month_key][$node_value]=$node;           
+                }
+            }
+        }
+    }
+    
+}
+/**
+ * @return $archive_blog
+ * Creates an array of nodes distinguished by year and month
+ * 
+ */
+function monthly_archive(){
+
+    $archives = db_query('SELECT n.title,YEAR(FROM_UNIXTIME(n.created)) AS year, month(FROM_UNIXTIME(n.created)) AS month, n.nid FROM {node} n WHERE n.type = :type AND n.status = :status ORDER BY n.created DESC ', array(':type' => 'news_media', ':status' => 1))->fetchAll();
+    
+    foreach($archives as $archive)
+	{
+		$year = $archive->year;
+		$month = $archive->month;
+		$archive_blog[$year][$month][] = $archive->nid;
+	}
+    return $archive_blog;
+    
+}
+/**
+ * Implementation hook_view_alter()
+ */
+function news_media_node_view_alter(&$build){
+    
+  if($build['#view_mode'] == 'full' && $build['#bundle'] == 'news_media'){
+	$build['#post_render'][] = '_news_media_node_post_render';
+  }
+}
+
+/**
+ * Function callback for node page post render.
+ * 
+ */
+function _news_media_node_post_render($content,$element){
+    
+        $node_data = $element['#node'];
+        $next_button = '';
+        $prev_button = '';
+        $query=db_select('node','n')
+                ->fields('n',array('title'))
+                ->condition('n.nid',$node_data->nid)
+                ->execute();
+        $title=$query->fetchField();
+        $next = _news_prev_next($node_data->nid, $node_data->created, 'n');
+		$prev = _news_prev_next($node_data->nid, $node_data->created, 'p');
+		if(!empty($next))
+			$next_button = l(t("NEXT &raquo;"), "node/".$next, array('html' => TRUE));
+		if(!empty($prev))
+			$prev_button = l(t("&laquo; PREVIOUS"), "node/".$prev, array('html' => TRUE));
+         
+        if($node_data->type == 'news_media') {
+            
+            $url = url('node/'. $node_data->nid, array('absolute' => TRUE));
+            
+            $news_author=isset($node_data->news_author[$node_data->language][0]['value']) ? $node_data->news_author[$node_data->language][0]['value'] : 'CignaTTK'; 
+        
+            $news_body=isset($node_data->body[$node_data->language][0]['value']) ? $node_data->body[$node_data->language][0]['value'] : '';
+            
+        }
+        $content='<article>
+                    <div>
+                        <h2 class="entry-title">News & Media</h2>
+                        <strong>'.l($title,'node/'.$node_data->nid).'</strong>
+                        <div class="news-author">'.wordwrap($news_author,50).'&nbsp;&nbsp;-&nbsp;'.date('d F Y',$node_data->created).'<div> 
+                        <div class="news-body">'.$news_body.'</div>
+                        <div class="newsandmedia">';
+        if(!empty($prev_button)){                
+            $content.= ' <div class="previousbtn">'.$prev_button.'</div>';
+        }
+        if(!empty($next_button)){
+            $content.='<div class="nextbtn">'.$next_button.'</div>';                        
+        }
+        $content.= ' </div> </div></div><article>';
+        return $content;
+}
+
+/**
+ * @return nodes
+ * Used for fetching nodes depending upon the next or previous link.
+ * 
+ */
+function _news_prev_next($current_node = NULL, $created = NULL, $op = 'p') {
+	global $language;
+	
+	if( $op == 'p') {
+		$sql_op = '>';
+		$order = "ASC";
+	}
+	elseif ($op == 'n') {
+		$sql_op = '<';
+		$order = "DESC";
+	}
+	else {
+		return NULL;
+	}
+	
+
+	$news_node = "SELECT n.nid FROM {node} n WHERE n.created ".$sql_op." :created AND n.type = :type AND status = :status  ORDER BY n.created ".$order." LIMIT 1";
+	$data = db_query($news_node, array(':created' => $created, ':type' => "news_media" ,':status' => 1))->fetchObject();
+	if (isset($data->nid))
+		return $data->nid;
+	else
+		return "";
+}
+/**
+ * Used for converting month format from m -> F
+ * 
+ */
+function get_month_str($month=NULL){
+    
+    $month_str='';
+    switch($month){
+        
+        case 1:
+            $month_str='January';
+            break;
+        case 2:
+            $month_str='February';
+            break;
+        case 3:
+            $month_str='March';
+            break;    
+        case 4:
+            $month_str='April';
+            break;
+        case 5:
+            $month_str='May';
+            break;
+        case 6:
+            $month_str='June';
+            break;
+        case 7:
+            $month_str='July';
+            break;
+        case 8:
+            $month_str='August';
+            break;
+        case 9:
+            $month_str='September';
+            break;
+        case 10:
+            $month_str='October';
+            break;
+        case 11:
+            $month_str='November';
+            break;
+        case 12:
+            $month_str='December';                                                                                        
+            break;
+    }
+    return $month_str; 
+}

@@ -1,0 +1,70 @@
+<?php
+/**
+ * We are preparing menu call back named pricing_engine.
+ */
+function product_configurator_menu() {
+    $items['pricing_engine'] = array(
+      'page callback' => 'product_configurator_webservice',
+	  'access callback' => TRUE,
+      'type' => MENU_CALLBACK,
+	  'page arguments' => array(1, 2),
+    );
+    return $items;
+}
+
+/**
+ * This function can be called directly or can be called from menu.
+ */
+function product_configurator_webservice($functionName,$object) {
+	global $quotation;
+	//$object->channelId = 1;
+	//$object->planId = 27;
+	//$object->policyType = 'FLOATER';
+	//$object->noOfAdults = 2;
+	//$object->noOfKids = 1;
+	$object->tenure = 1;
+	//$object->sumInsured = 500000;//$_POST[sumInsured];
+	//$object->age = 30;
+	//$object->gender = 'M';
+	//$object->city = 'Mumbai';
+    $functionName = 'calculatePremium';
+	$result = $quotation->compute($functionName,$object);
+	if(isset($result->error)){
+		//drupal_set_message(t('Error is coming while retrieving this web service.'), $result->error);
+	}
+    $data = (array) $result;
+    return $data;
+ }
+ 
+ function product_configurator_webservice_base_premium($functionName,$object) {
+    
+	global $quotation;
+	$object->tenure = 1;
+    $functionName = 'calculatePremium';
+	$result = $quotation->compute($functionName,$object);
+    $data = (array) $result;
+    $data = array_shift($data);
+    if($data->basePremium){
+        return $data->basePremium;
+    }else {
+        return 'none';
+    }
+ }
+
+/**
+ * Initialize product_configurator
+ */
+function product_configurator_init() {
+
+  if(libraries_get_path("webservice")){
+	require_once DRUPAL_ROOT . '/'.libraries_get_path("webservice").'/quotation.php';
+	
+	global $quotation;
+	$quotation = new Quotation();
+	
+  }
+  else{
+	drupal_set_message(t('Library webservice does not exists.'), 'error');
+  }
+}
+

@@ -1,0 +1,2082 @@
+<?php
+
+/**
+ * Implements hook_init
+ * 
+ */
+ 
+function site_structure_init(){
+    
+    //
+    //
+    require './includes/password.inc';
+    set_loggedin_user_details();
+    //set global variable as adult.
+    validate_adult();
+    //set global variable for cities
+    getCities();
+    
+}
+/**
+ * Implements hook_permission
+ * 
+ */
+function site_structure_permission(){
+    
+    return array(
+        'show access denied' =>  array(
+            'title' => t('Show Access Denied'),
+         ),
+         'show not found' =>  array(
+            'title' => t('Show Not Found'),
+         ),
+    );
+}
+/**
+ * Implements hook_menu
+ * 
+ */
+function site_structure_menu(){
+    
+    
+	 $items=array();
+	 $items['access_denied'] = array(
+		'page callback' => 'access_denied_callback',
+		'access arguments' => array('show access denied'),
+		'type' => MENU_CALLBACK,
+	 );
+	 $items['not_found'] = array(
+		'page callback' => 'not_found_callback',
+		'access arguments' => array('show not found'),
+		'type' => MENU_CALLBACK,
+	 );
+    $items['change_location/%ctools_js/location'] = array(
+      'title' => 'Change Location',
+      'page callback' => 'change_location_ajax_callback',
+      'page arguments' => array(1),
+      'access callback' => TRUE,
+      'type' => MENU_CALLBACK,
+    );
+    
+  	$items['download/claims'] = array(
+      'page callback' => '_custom_download',
+	  'access callback' => TRUE,
+	  'title'=> 'Claim Forms',
+  //    'type' => MENU_CALLBACK,
+	  'page arguments' => array(1),
+    );   
+	$items['download/brochures'] = array(
+      'page callback' => '_custom_download',
+	  'access callback' => TRUE,
+	  'title'=> 'Brochures',
+	  'page arguments' => array(1),
+    );  
+	$items['faq'] = array(
+      'page callback' => '_faq',
+	  'access callback' => TRUE,
+	  'title'=> 'FAQs',
+	  'page arguments' => array(1),
+    );
+    $items['disclaimers'] = array(
+      'page callback' => '_disclaimers',
+	  'access callback' => TRUE,
+	  'title'=> 'Disclaimers',
+    );
+ 
+//menu for callback_facility pop
+    $items['site_structure/ajax/callback_facitlity'] = array(
+      'page callback' => 'callback_receive',
+      'access callback' => TRUE,
+      'type' => MENU_CALLBACK,
+	 );
+
+//  admin page for service request
+    $items['admin/list/service_request'] = array(
+		'title' => 'Service Request List',
+		'page callback' => 'drupal_get_form',
+		'page arguments'=>array('admin_list_service_request'),
+		'access callback' => TRUE,		
+	);
+    
+//servie request admin edit page
+    $items['admin/service_request/%/edit'] = array(
+      'page callback' => 'drupal_get_form',
+      'page arguments'=>array('request_edit',2),
+      'access callback' => TRUE,
+      'type' => MENU_CALLBACK,
+	 );
+    
+     $items['grievance-redressal'] = array(
+      'page callback' => 'grievance_redressal',
+      'access callback' => TRUE,
+      'type' => MENU_CALLBACK,
+	 );
+
+    return $items;    
+}
+
+function grievance_redressal(){
+    return theme('grievance_redressal');
+}
+/**
+ * Implements hook_theme
+ * 
+ */
+function site_structure_theme(){
+     return array(
+	   'access_denied' => array(
+	       'render element' => 'elements',
+            'template' => 'access-denied',
+	   ),
+	   'not_found' => array(
+	       'render element' => 'elements',
+	       'template' => 'not-found',
+	   ),
+		'custom_download'=>array(
+		'render element' => 'element',
+		'variables' => array('custom_download' => arg(1)),
+		'template'=>'custom-download'
+		),
+		'faq'=>array(
+		'render element' => 'element',
+		//'variables' => array('fa' => arg(1)),
+		'template'=>'faq'
+		),
+        'disclaimers' => array(
+		      'render element' => 'element',
+		      'template'       => 'disclaimers'
+		),
+        'grievance_redressal' => array(
+            'render element' => 'element',
+            'template'       => 'grievance-redressal'
+        ),
+	 );
+}
+
+function site_structure_user_login(&$edit,$account){
+    
+  
+}
+function access_denied_callback() {
+	 return theme('access_denied');
+}
+
+function not_found_callback() {
+	 return theme('not_found');
+}
+
+function template_preprocess_not_found(&$variables) {
+    
+}
+
+function template_preprocess_access_denied(&$variables) {
+    
+}
+function change_location_ajax_callback($js=NULL){
+    
+    /*
+    if($js){
+        
+        ctools_include('ajax');
+        ctools_include('modal');
+        $form_state = array(
+            'ajax' => $js,
+            'title' => t('Change Location'),
+        );
+        return ctools_modal_render('Change Location', $contents) ;
+    //print ajax_render($output);
+    //exit;
+   }else {
+        return $contents;
+   }
+        
+        */
+        
+        $output='<a href="#" class="big-link" data-reveal-id="myModal1" data-animation="none" >Change Location</a>' ;
+        
+    return $output;
+}
+#################################### BLOCK IMPLEMENTATION #############################################
+
+/**
+ * Impelements hook_block_info
+ * 
+ */
+function  site_structure_block_info() {
+    
+   $blocks['side_navigation']=array(
+        'info'=>'Left Side Navigation',
+        'visibility' => BLOCK_VISIBILITY_PHP,
+	    'pages' => '<?php print _site_show_sidenav(); ?>',
+   ) ;
+   $blocks['suggest_plan']=array(
+        'info'=>'Suggest Plan',
+        'visibility' => BLOCK_VISIBILITY_LISTED,
+	    'pages' => '<front>',
+   ) ;
+    $blocks['feedback_form']=array(
+        'info'=>'Feedback Form',
+        'visibility' => BLOCK_VISIBILITY_LISTED,
+	    'pages' => 'contact-us',
+   ) ;
+    $blocks['change_location']=array(
+        'info'=>'Change Location',
+        'visibility' => BLOCK_VISIBILITY_LISTED,
+	    'pages' => '<front>',
+   ) ;
+   $blocks['quote_modify_details']=array(
+        'info'=>'Quote Modify Details Block',
+        'visibility' => BLOCK_VISIBILITY_PHP,
+	    'pages' => '<?php print _site_show_quote(); ?>',
+   ) ;
+   $blocks['downloads_navigation']=array(
+        'info'=>'Downloads Navigation',
+        'visibility' => BLOCK_VISIBILITY_PHP,
+	    'pages' => '<?php print _custom_downloads_side_bar(); ?>',
+   ) ;
+   $blocks['faq_navigation']=array(
+        'info'=>'Faqs Navigation',
+        'visibility' => BLOCK_VISIBILITY_PHP,
+	    'pages' => '<?php print _custom_faqs_side_bar(); ?>',
+   ) ;
+   $blocks['application_details']=array(
+        'info'=>'Application form details',
+        'visibility' => BLOCK_VISIBILITY_LISTED,
+	    'pages' => '<front>',
+   );
+   $blocks['profile_side_nav']=array(
+        'info'=>'User Dashboard Side Navigation',
+        'cache'=>'DRUPAL_NO_CACHE',
+   );
+   $blocks['most_read_article']=array(
+        'info'=>'MOST READ ARTICLES',
+        'visibility' => BLOCK_VISIBILITY_LISTED,
+   ) ;
+//Create block for online channels.
+   $blocks['online_channel_custom']=array(
+        'info'=>'ONLINE CHANNEL CUSTOM',
+//        'visibility' => BLOCK_VISIBILITY_LISTED,
+   );
+//block for contact-us-support
+   $blocks['contact_us_support']=array(
+        'info'=>'CONTACT US SUPPORT',
+        'visibility' => BLOCK_VISIBILITY_LISTED,
+   );
+//block for claims-process-support
+   $blocks['claims_process_support']=array(
+        'info'=>'CLAIMS PROCESS SUPPORT',
+        'visibility' => BLOCK_VISIBILITY_LISTED,
+   );
+//pop for callback_facility
+   $blocks['callback_facility']=array(
+        'info'=>'CALLBACK FACILITY',
+        'visibility' => BLOCK_VISIBILITY_LISTED,
+   );
+//Create block for Resources.
+   $blocks['resources_custom']=array(
+        'info'=>'RESOURCES CUSTOM',
+//        'visibility' => BLOCK_VISIBILITY_LISTED,
+   );
+//pop for Service_Request
+   $blocks['service_request']=array(
+        'info'=>'SERVICE REQUEST',
+        'visibility' => BLOCK_VISIBILITY_LISTED,
+   );
+   
+//LOGIN BANNER
+   $blocks['user_login_banner']=array(
+        'info'=>'USER LOGIN BANNER',
+        'visibility' => BLOCK_VISIBILITY_LISTED,
+   );
+   
+//suggessted plan bottom
+    $blocks['suggested_plan_change_bottom']=array(
+        'info'=>'SUGGESTED PLAN CHANGE BOTTOM',
+        'visibility' => BLOCK_VISIBILITY_PHP,
+        'pages' => '<?php print _site_show_bottom(); ?>',
+    );
+
+//suggessted plan right
+    $blocks['suggested_plan_change_right']=array(
+        'info'=>'SUGGESTED PLAN CHANGE RIGHT',
+        'visibility' => BLOCK_VISIBILITY_PHP,
+        'pages' => '<?php print _site_show_bottom(); ?>',
+    );
+
+//plan addons right
+    $blocks['plan_addons_right']=array(
+        'info'=>'PLAN ADDONS RIGHT',
+        'visibility' => BLOCK_VISIBILITY_PHP,
+        'pages' => '<?php print _site_show_on_addon(); ?>',
+    );
+    
+//Create block for LEGAL CUSTOM
+   $blocks['legal_custom']=array(
+        'info'=>'LEGAL CUSTOM',
+//        'visibility' => BLOCK_VISIBILITY_LISTED,
+   );
+       
+   return $blocks;
+}
+/**
+ * Impelements hook_block_view
+ * 
+ * @param $delta
+ * @return Block view
+ */ 
+ 
+function site_structure_block_view($delta = '') {
+    
+    $block = array();
+	switch ($delta) {
+        case 'side_navigation':
+            $block['subject']='';
+            $block['content']=_site_side_navigation();
+            break;
+         case 'feedback_form':
+            $block['subject']='';
+            $block['content']=_site_feedback_form();
+            break;
+          case 'change_location':
+            $block['subject']='';
+            $block['content']=_site_change_location();
+            break;
+           case 'application_details':
+            $block['subject']='';
+            $block['content']=_site_application_details();
+            break;
+          case 'suggest_plan':
+            $block['subject']='';
+            $block['content']=_site_suggest_plan();
+            break;
+        case 'quote_modify_details':
+            $block['subject']='';
+            $block['content']=_site_quote_modify_details();
+            break;
+		case 'downloads_navigation':
+            $block['subject']='';
+            $block['content']=_custom_downloads_side_bar();
+            break;
+		case 'faq_navigation':
+            $block['subject']='';
+            $block['content']=_custom_faqs_side_bar();
+            break;
+        case 'profile_side_nav':
+            $block['subject']='';
+            $block['content']=_site_profile_side_nav();
+            break;
+        case 'most_read_article':
+            $block['subject']='';
+            $block['content'] = _most_read_article();
+            break;
+        case 'share_this_button':
+            $block['subject']='Share Button';
+            $block['content']= _share_this();
+            break;
+//block view for online channel
+        case 'online_channel_custom':
+            $block['subject']='';
+            $block['content'] = _online_channel_custom();
+            break;
+//block for contact-us-support
+        case 'contact_us_support':
+            $block['subject']='';
+            $block['content'] = _contact_us_support();
+            break;
+//block for claims-process-support
+        case 'claims_process_support':
+            $block['subject']='';
+            $block['content'] = _claims_process_support();
+            break;
+//pop for callback_facility
+        case 'callback_facility':
+            $block['subject']='';
+            $block['content'] = _callback_facility();
+            break;
+//Create block for Resources.
+        case 'resources_custom':
+            $block['subject']='';
+            $block['content'] = _resources_custom();
+            break;
+//pop for Service Request
+        case 'service_request':
+            $block['subject']='';
+            $block['content'] = _service_request();
+            break;
+//LOGIN BANNER
+       case 'user_login_banner':
+            $block['subject']='';
+            $block['content'] = _user_login_banner();
+            break;
+//suggessted plan bottom
+        case 'suggested_plan_change_bottom':
+            $block['subject']='';
+            $block['content'] = _suggested_plan_change_bottom();
+            break;
+//suggessted plan right
+        case 'suggested_plan_change_right':
+            $block['subject']='';
+            $block['content'] = _suggested_plan_change_right();
+            break;
+//plan addons right
+        case 'plan_addons_right':
+            $block['subject']='';
+            $block['content'] = _plan_addons_right();
+            break; 
+//LEGAL CUSTOM
+        case 'legal_custom':
+            $block['subject']='';
+            $block['content'] = _legal_custom();
+            break; 
+                 
+	}
+    
+    return $block;
+      
+}
+
+function _share_this(){
+    $output  = "<div>";
+    $output .= "<span class='st_sharethis' displayText='ShareThis'></span>
+                <span class='st_facebook' displayText='Facebook'></span>
+                <span class='st_googleplus' displayText='Google +'></span>
+                <span class='st_twitter' displayText='Tweet'></span>'";
+    $output .= "</div>";
+    
+    return $output;
+}
+
+function _callback_facility(){
+    
+    global $base_url;
+    
+    $output ='<div id="callbackmodal" class="callbackmodal">
+                <div id="myModal777" class="reveal-modal">
+                <h1>Assistance using call back facility</h1>
+                <div id="displayDiv">Enter your phone number and we will call you back.<br/>
+                    <form id="callback_form" name="callback" action="" method="post">
+                        <input id="phone" type="text" name="phone" size="30"> <input id="call_submit" type="submit" value="Submit">
+						<div id="errormsg" class="errormsg" style="color:#cc0000;"></div>
+                    </form> 
+                </div>
+                <div id="callback_msg"></div>
+                <br/>
+                <hr style="border-bottom:1px solid #808080;">
+                <br/>                
+                <div class="followingrach"><p>You can also use any of the following to reach us</p>
+                <ul class="tollfree">
+                    <li><b>Toll Free Helpline</b><br>1800-1234-5678</li>
+                </ul>
+				
+				<ul class="smsdetail">
+				<li><b>SMS</b><p>Type "CIGNA" and send to<br>"12345" and we will call you back</p></li>
+				</ul>
+				
+				<ul class="emaiiddd">
+				  <li><b>Email</b><br>customercare@cignattkinsurance.in</li>
+				</ul>
+				</div>';
+                
+    $output .="<a class='close-reveal-modal'><img src='".$base_url."/sites/all/themes/cigna_ttk_2/images/closed.png'/></a></div></div>";
+                
+//  $output.='<a href="#" class="big-link" data-reveal-id="myModal777" data-animation="none">MODIFY PREFERENCES</a>';
+
+    return $output;
+}
+
+//suggested plan bottom
+function _suggested_plan_change_bottom(){
+    
+    global $base_url, $theme;
+    
+    $output ='<div class="bottondata">
+	<article class="botton">
+          <h3>Other plans you might be interested in</h3>
+          <div class="datalist">
+            <data>
+              <h4 class="frst">PERSONAL ACCIDENT<br />
+                <span>A FIXED BENEFIT PLAN</span></h4>
+              <p>Ideal plan for lorem ipsum dolor sit amet, consectetur adipiscing elit. Curabitur congue quam et nunc interdum tristique etiam ac lacus massa wivamus varius.</p>
+              <img src="'.url(drupal_get_path('theme',$theme)).'/images/arrow_1.png" width="21" height="21" alt=""> </data>
+          </div>
+          <div class="datalist">
+            <data>
+              <h4 class="sec">CRITICAL ILLNESS<br />
+                <span>A FIXED BENEFIT PLAN</span></h4>
+              <p>Ideal plan for lorem ipsum dolor sit amet, consectetur adipiscing elit. Curabitur congue quam et nunc interdum tristique etiam ac lacus massa wivamus varius.</p>
+              <img src="'.url(drupal_get_path('theme',$theme)).'/images/arrow_1.png" width="21" height="21" alt=""> </data>
+          </div>
+          <div class="datalist">
+            <data>
+              <h4 class="thre">HOSPITAL CASH<br />
+                <span>A FIXED BENEFIT PLAN</span></h4>
+              <p>Ideal plan for lorem ipsum dolor sit amet, consectetur adipiscing elit. Curabitur congue quam et nunc interdum tristique etiam ac lacus massa wivamus varius.</p>
+              <img src="'.url(drupal_get_path('theme',$theme)).'/images/arrow_1.png" width="21" height="21" alt=""> </data>
+          </div>
+          <div class="datalist last">
+            <data class="last">
+              <h4>FIXED BENEFIT PLANS?</h4>
+              <p>These plans are designed for giving maximum benefit under the sum insured lorem ipsum dolor sit amet nunc justo. Avec pharetra nunc biendum lorem. </p>
+            </data>
+          </div>
+        </article>
+		</div>';
+    
+    return $output;
+    
+}
+
+//suggested plan bottom
+function _suggested_plan_change_right(){
+    
+    global $base_url, $theme;
+    
+    $output ='<aside>
+        <h5>HOSPITALIZATION PLANS</h5>
+        <p>These plans are designed for giving maximum benefit under the sum insured lorem ipsum dolor sit amet nunc justo. Avec pharetra nunc biendum lorem.</p>
+        <a href="#">> View all add-ons</a> </aside>';
+    
+    return $output;
+    
+}
+
+//plan addons right
+function _plan_addons_right(){
+    
+    global $base_url, $theme;
+    
+    $output ='<aside>
+       <h5>8 ADD-ONS AVAILABLE</h5>
+       <p>These plans are designed for giving maximum benefit under the sum insured lorem ipsum dolor sit amet nunc justo. Avec pharetra nunc biendum lorem.</p>
+       <a href="#">> View all add-ons</a>
+       <div class="addone">
+       	<ul>
+        	<li><a href="#">DOWNLOAD BROCHURE</a></li>
+            <li><a href="#">DOWNLOAD FORMS</a></li>
+            <li><a href="#">MAIL TO FRIEND</a></li>
+            <li><a href="#">SHARE</a></li>
+            <li><a href="#">PRINT</a></li>
+        </ul>
+       </div>
+       </aside>';
+    
+    return $output;
+    
+}
+//footer legal custom
+function _legal_custom(){
+    
+    global $base_url, $theme;
+    
+    $output ='<h2>LEGAL</h2>  
+                <ul class="menu clearfix">
+                    <li class="first leaf"><a href="'.$base_url.'/'.drupal_get_path_alias('disclaimers').'" title="">Disclaimers</a></li>
+                    <li class="leaf"><a href="'.$base_url.'/'.drupal_get_path_alias('disclosures').'" title="">Disclosures</a></li>
+                    <li class="leaf"><a href="http://www.irda.gov.in" title="" target="_blank">IRDA Website</a></li>
+                    <li class="last leaf"><a href="'.$base_url.'/'.drupal_get_path_alias('grievance-redressal').'" title="">Grievance Redressal</a></li>
+                </ul>';
+    
+    return $output;
+}
+
+//custom online channel
+function _online_channel_custom(){
+    
+    global $base_url, $theme;
+    
+    $output ='<h2>ONLINE CHANNELS</h2>
+                  <ul class="menu clearfix">
+                    <li class="first leaf"><a href="http://www.linkedin.com/company/cignattk-health-insurance-company-limited" target="_blank"><img src="'.url(drupal_get_path('theme',$theme)).'/images/LinkedIn.png" width="14" height="13">&nbsp;LinkedIn</a></li>
+                    <li class="leaf"><a href="https://www.facebook.com/CignattkInsurance" target="_blank"><img src="'.url(drupal_get_path('theme',$theme)).'/images/facebook.png" width="14" height="13" alt="">&nbsp;Facebook</a></li>
+                    <li class="leaf"><a href="https://twitter.com/CignaTTKHealth" target="_blank"><img src="'.url(drupal_get_path('theme',$theme)).'/images/twitter.png" width="12" height="11">&nbsp;Twitter</a></li>
+                    <li class="leaf"><a href="#" target="_blank"><img src="'.url(drupal_get_path('theme',$theme)).'/images/youtube.png" width="12" height="13">&nbsp;Youtube</a></li>
+                    <li class="last leaf"><a href="#" target="_blank"><img src="'.url(drupal_get_path('theme',$theme)).'/images/google.png" width="14" height="13" alt="">&nbsp;Google+</a></li>
+                  </ul>';
+    
+    return $output;
+}
+
+function _resources_custom(){
+    
+    global $user, $base_url, $theme;
+    
+    $output ='<h2>RESOURCES</h2>
+                  <ul>                   
+                    <li class="leaf"><a href="'.$base_url.'/'.drupal_get_path_alias('hospital-locator').'">Hospital Locator</a></li>
+                    <li class="first leaf"><a href="'.$base_url.'/'.drupal_get_path_alias('quick-quote').'">Quick Quote</a></li>
+                    <li class="leaf"><a href="'.$base_url.'/faq/featured'.'">FAQs</a></li>
+                    <li class="leaf"><a href="'.$base_url.'/'.drupal_get_path_alias('glossary').'">Glossary</a></li>
+                    <li class="leaf"><a href="'.$base_url.'/download/claims'.'">Downloads</a></li>
+                    <li class="leaf"><a href="'.$base_url.'/'.drupal_get_path_alias('claims-process').'">Claims Process</a></li>';
+          /*               
+        if ($user->uid) {
+            $output .= '<li class="leaf"><a href="" data-reveal-id="myModal778" data-animation="none">Service Request</a></li>';
+        }
+        else{
+            $output .= '<li class="leaf"><a href="'.$base_url.'/user" >Service Request</a></li>';
+        }*/
+     $output .= '<li class="leaf"><a href="#" >Service Request</a></li>';             
+     $output.='<li class="last leaf"><a href="'.$base_url.'/'.drupal_get_path_alias('dncregistry').'">DNC Registry</a></li>
+                  </ul>';
+    
+    return $output;    
+}
+
+function _most_read_article(){
+        $result = db_query('SELECT node.title,rb.nid,rb.count FROM {most_read_article} as rb INNER JOIN node ON rb.nid = node.nid ORDER BY rb.count DESC LIMIT 0,10');
+        $output='<div class="bolgdata"><ul>';
+        foreach($result as $data){
+            $output.='<li>';
+            $output .= strtoupper(l($data->title,'node/'.$data->nid));
+            $output.='</li>';
+        }
+        $output.='</ul></div>';
+        return $output;
+}
+function _site_profile_side_nav(){
+    
+    global $base_url;
+    
+    $output='';
+    
+    $output.='<div class="leftdata">
+        <aside>
+          <div class="bolgdata">
+            <h5>LOYALTY BENEFITS</h5>
+            <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Curabitur congue quam et nunc interdum tristique.</p>
+          </div>
+          <div class="bolgdata">
+            <h5>YOUR RELATIONSHIP MANAGER</h5>            
+            <div class="man"><img src="'.$base_url.'/sites/all/themes/cigna_ttk_2/images/man.png" width="20" height="21" alt=""></div>
+            <div class="nameadd">Arundhuti Balakrishnan <br />
+              +91 98802 88467</div>
+            <p>If you need further lorem ipsum dolor sit amet, consectetur adipiscing elit. Curabitur congue quam et nunc interdum tristique.</p>
+          </div>
+          <div class="bolgdata">
+            <h5>QUICK LINKS</h5>
+            <ul>
+              <li>HOSPITAL LOCATOR</li>
+              <li>BRANCH LOCATOR</li>
+              <li>SERVICE REQUEST</li>
+              <li>CLAIMS FORM</li>
+              <li>CLAIMS PROCESS</li>
+              <li>FEEDBACK</li>
+              <li class="last">GRIEVANCE REDRESSAL</li>
+            </ul>
+          </div>
+          <div class="bolgdata">
+            <h5>TOOLS</h5>
+            <ul>
+              <li>PREMIUM CALCULATOR</li>
+              <li class="last">CALENDAR</li>
+            </ul>
+          </div>
+        </aside>
+      </div>
+    </div>';
+    
+    return $output;
+    
+}
+function _site_side_navigation(){
+     
+    global $language;
+    $output='';
+    $media_active_class='';
+    $tree = menu_tree_all_data('menu-about-us', NULL, 2);
+    $arg=arg();
+    $current='';
+    
+    if(isset($arg[0]) && isset($arg[1])){
+        $current=drupal_get_path_alias('node/' . $arg[1]);
+    }else if (isset($arg[0]) && $arg[0]=='news-and-media'){
+        $current='news-and-media';
+    }
+    //dpr($arg[0]);exit;
+   $output.='<h1 class="entry-title">About Cigna-TTK</h1>';
+   $output .= '<div class="leftnav"><aside class="span3 leftside"><ul>';
+    $inc=-1;
+    foreach($tree as $link){
+        
+        $inc++;
+        
+        $data = $link['link'];
+        if(!$data['hidden']){
+            $attributes = array();
+            $attributes = array('attributes' => array('class' => array('current')));
+            
+            $realpath=drupal_get_path_alias($data['link_path']);
+            
+            if(isset($arg[0]) && isset($arg[1])){
+     
+                 $news_node=drupal_get_path_alias('node/' . $arg[1]);
+                 $news_pattern=explode('/',$news_node);
+                 if($news_pattern[0]=='news-and-media'){
+                    if($data['link_title']=='News & Media'){
+                        $realpath=$news_node;    
+                    }
+                 }
+            }
+            if ($inc === 0)
+                $output .=  '<li class="first">';
+            else
+                $output .=  '<li>';
+            
+            if($current==$realpath )
+                $output .=l($data['link_title'], $data['link_path'], $attributes) . '</li>';
+            else
+                $output .=l($data['link_title'], $data['link_path']) . '</li>';
+                
+        }
+    }
+    $output .= '</ul></aside></div>';
+	return $output;
+    
+}
+
+function _claims_process_support(){
+    
+    global $base_url, $theme;
+    
+    $output ='<div class="leftdata">
+        <aside>
+          <div class="bolgdata">
+            <h5>CLAIM PROCESS</h5>
+            <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Curabitur congue quam et nunc interdum tristique.</p>
+            <ul>
+              <li><img src="'.url(drupal_get_path('theme',$theme)).'/images/download_icon.png" width="19" height="19" alt="">DOWNLOAD</li>
+              <li><img src="'.url(drupal_get_path('theme',$theme)).'/images/print_icon.png" width="19" height="19" alt="">PRINT</li>
+              <li class="last"><img src="'.url(drupal_get_path('theme',$theme)).'/images/share_icon.png" width="13" height="13" alt="">&nbsp;SHARE</li>
+            </ul>
+          </div>
+          <div class="bolgdata">
+            <h5>CLAIM FORMS</h5>
+            <ul>
+              <li class="last"><img src="'.url(drupal_get_path('theme',$theme)).'/images/download_icon.png" width="19" height="19" alt="">DOWNLOAD</li>
+            </ul>
+          </div>
+          <div class="bolgdata">
+            <h5>FOR SUPPORT QUERIES</h5>
+            <p>Toll Free Helpline<br />
+              <span>1800 1234 5678</span></p>
+            <p>Email<br />
+              <span>customercare@cignattk.in</span></p>
+          </div>
+          <div class="bolgdata">
+            <h5>WRITE TO US</h5>';    
+                $feedback=drupal_get_form('feedback_write_to_us');    
+                $output.=drupal_render($feedback);      
+                        
+          $output.='</div>
+        </aside>
+      </div></div>';
+      
+    return $output;
+}
+
+function _contact_us_support(){
+    
+    $output='<div class="contact-us-right">
+                <div class="support-related">
+                    <span>For support related queries</span>
+                    <span>Toll Free Helpline:<br />
+                            1800-1234-5678</span><br />
+                    <span>Email :</span><br />
+                    <span><a href="mailto:customercare@cignattk.in">customercare@cignattk.in</a><span>
+                </div>
+                 <div class="support-related">
+                    <span> For Career related queries</span><br />
+                    <span>Please send in your applications to</span><br />
+                    <span><a href="mailto:careers@cignattk.in">careers@cignattk.in</a><span>
+               </div>
+            </div>';
+            
+    return $output;    
+}
+
+function _site_feedback_form(){
+    
+    $output='';
+       
+    $output.='<h4 class="entry-title">Write to us</h4>';
+    //$output .= '<div class="rightnav"><aside class="span3 leftside"></aside></div>';
+    
+    $feedback=drupal_get_form('feedback_write_to_us');    
+    $output.=drupal_render($feedback);
+    return $output;
+    
+}
+function feedback_write_to_us($form,$form_state){
+    
+    $form['name']=array(
+        '#type'=>'textfield',
+        '#title'=>'Name',
+        '#size'=>30,
+    );
+    $form['email']=array(
+        '#type'=>'textfield',
+        '#title'=>'Email',
+        '#size'=>30,
+    );
+    
+    $form['phone']=array(
+        '#type'=>'textfield',
+        '#title'=>'Phone',
+        '#size'=>30,
+    );
+    $form['comment']=array(
+        '#type'=>'textarea',
+        '#title'=>'Comment',
+        '#rows'=>3,
+        '#cols'=>10,
+    );
+     $form['action']=array(
+        '#type'=>'submit',
+        '#value'=>'Submit',
+    );
+    return $form;
+}
+function _site_suggest_plan(){
+    
+        global $base_url;
+        $output='';
+        $links='';
+        /*
+      ctools_include('ajax');
+      ctools_include('modal');
+      ctools_modal_add_js();
+        
+      
+      $sample_style = array(
+        'happy-modal-style' => array(
+          'modalSize' => array(
+            'type' => 'fixed',
+            'width' => 600,
+            'height' => 240,
+            'addWidth' => 10,
+            'addHeight' => 10,
+            'contentRight' => 0,
+            'contentBottom' => 0,
+          ),
+          'modalOptions' => array(
+            'opacity' => .6,
+            'background-color' => '#684C31',
+          ),
+          'animation' => 'fadeIn',
+          'modalTheme' => 'happy_modal',
+          // Customize the AJAX throbber like so:
+          // This function assumes the images are inside the module directory's "images"
+          // directory:
+          // ctools_image_path($image, $module = 'ctools', $dir = 'images')
+          'throbber' => theme('image', array('path' => ctools_image_path('ajax-loader.gif', 'happy'), 'alt' => t('Loading...'), 'title' => t('Loading'))),
+          'closeImage' => theme('image', array('path' => ctools_image_path('modal-close.png', 'happy'), 'alt' => t('Close window'), 'title' => t('Close window'))),
+        ),
+      );  
+        
+        drupal_add_js($sample_style, 'setting');
+        ctools_add_js('quick-quote', 'quick_quotation');
+        ctools_add_css('quick-quote', 'quick_quotation');
+        
+        $links = ctools_modal_text_button(t(' I am looking for plans<br/>with lower premium.'), 'common/nojs/details', t(' I am looking for plans<br/> with lower premium.'),'ctools-use-modal');
+        */
+        
+        $script='   
+        (function($){
+            $(document).ready(function(){
+                    $(".flip").click(function(){
+                         $("#slide-content").slideToggle("slow");
+                   });                        
+            
+             });
+        })(jQuery);';
+        drupal_add_js($script,'inline');        
+        $output.='<div class="plan-suggestion">
+                        <div class="suggest-title"><strong>Suggest One or More Plans <br/> That Fit me best</strong></div>
+                        <div class="flip"><a href="javascript:void(0)">We\'ll need a few details <br/> to get started</a></div>
+                </div>
+                <div id="slide-content"><strong>
+                        <div class="get-quote">'.l('I am looking for plans with lower premium.','quote/suggestion/details').'</strong>
+                        
+                        </div>
+                </div>';
+
+        return $output;  
+}
+function _site_change_location(){
+    
+    
+    $output='<a href="#" class="big-link" data-reveal-id="myModal1" data-animation="none" >Change Location</a>' ;    
+    return $output;
+    
+}
+function _site_quote_modify_details(){
+    
+    //dpr($_SESSION);exit;
+    if(isset($_SESSION['show_all_plans'])){
+        
+        return false;
+    }
+    if(isset($_GET['quote-id'])){
+        
+        $quote_id=db_select('get_quote','q')
+                  ->fields('q',array('qid'))
+                  ->condition('initial_quote_no',$_GET['quote-id'])
+                  ->execute()->fetchField();
+                  
+        $values=quote_details_by_id($quote_id);
+        
+    }else if(isset($_SESSION['quick_quote'])){
+        
+        $quote_id=$_SESSION['quick_quote']['quote_no'];
+        $values=quote_details_by_id($quote_id);
+        
+    }else if(isset($_SESSION['user_quote_no'])){
+        
+        //foreach($_SESSION['quick_quote_data'] as $key=>$value){
+            
+                $quote_id=$_SESSION['user_quote_no'];
+                $values=quote_details_by_id($quote_id);
+              //  break;
+       // }   
+    }
+    
+    $output='';
+    ctools_include('ajax');
+    ctools_include('modal');
+    ctools_modal_add_js();
+      
+    $modify_link = ctools_modal_text_button(t('Modify Details'), 'quotation/nojs/modify', t('Quote Details Modify'),'ctools-use-modal linkbuttonclass');
+      
+    $location=location_details($values['city_id']);
+    if(!empty($location)){
+        $location_value=$location['city_name'];
+        $zone_value=strtoupper($location['zone']);
+    }
+    
+    if(isset($values) && !empty($values)){
+        
+        
+        //dpr($values);exit;    
+        $people_count=($values['no_adults'] + $values['no_childs']);
+        $sum_insured=$values['sum_insured']/100000;
+        
+        
+        /*
+         $output.="<div id='quote-block'>
+                   <div> 
+                        Your Details
+                   </div>
+                   <div class='quote-people-count'>
+                        I want to insure<br/><strong>".$people_count."&nbsp;People</strong>
+                   </div>
+                   <div class='quote-people-details'>
+                        Basic details of<br/><strong>".$people_count."&nbsp;People</strong>
+                   </div>
+                   <div class='quote-region'>
+                        I reside in<br/><strong>".$location_value."&nbsp;</strong>
+                   </div>
+                   <div class='quote-sum-insured'>
+                        I am looking for a<br/>cover of <strong>".$sum_insured."&nbsp; lakhs</strong>
+                   </div> 
+                   <div class='quote-modify-details'>
+                         <strong>".$modify_link."</strong>   
+                   </div>                   
+        </div>";*/
+        $output='<div class="thankyoupay planaddons">
+                    <h1>Your Details</h1>
+                    <div class="ModifyDetails">
+                         <strong>'.$modify_link.'</strong>   
+                   </div>
+                    <dd>
+                    <dl>
+                      <dt class="left frst">
+                        <h1>NO. OF PEOPLE TO BE INSURED</h1>
+                      </dt>
+                      <dt class="right">
+                        <ul>
+                          <li>'.$values['no_adults'].' ADULTS</li>
+                          <li class="last">'.$values['no_childs'].' CHILD</li>
+                        </ul>
+                      </dt>
+                    </dl>
+                    <dl>
+                      <dt class="left sec">
+                        <h1>BASIC DETAILS <br />
+                          OF</h1>
+                      </dt>
+                      <dt class="right">
+                        <ul>
+                          <li>'.$values['no_adults'].' ADULTS</li>
+                          <li class="last">'.$values['no_childs'].' CHILD</li>
+                        </ul>
+                      </dt>
+                    </dl>
+                    <dl>
+                      <dt class="left thr">
+                        <h1>I RESIDE IN</h1>
+                      </dt>
+                      <dt class="right">
+                        <ul>
+                          <li class="last fist">'.$location_value.'</li>
+                        </ul>
+                      </dt>
+                    </dl>
+                    <dl class="last">
+                      <dt class="left sec">
+                        <h1>I AM LOOKING FOR INSURANCE OF</h1>
+                      </dt>
+                      <dt class="right">
+                        <ul>
+                          <li class="last fist">'.$sum_insured.' LAKHS</li>
+                        </ul>
+                      </dt>
+                    </dl>
+                  </dd>              
+                </div>';    
+    
+        }
+    return $output;
+       
+}
+
+function _site_show_sidenav(){
+    
+    $arg = arg();
+	$bool = FALSE;
+	$nids = array('partners', 'careers','contact-us','overview','management-team');
+	$valid_types = array('news-and-media');
+    
+    $valid_pages = array(
+		'news-and-media' => 'news-and-media',
+		'contact-us' => 'contact-us',
+		'careers' => 'careers',
+		'overview' => 'overview',
+        'partners' => 'partners',
+		'management-team' => 'management-team',  
+	);
+    if(!empty($arg[0]) && empty($arg[1])) {
+		if(array_key_exists($arg[0], $valid_pages)) {
+			$bool = TRUE;
+		} 
+        else {
+			$bool = FALSE;
+		}
+	}
+	else if($arg[0] == 'node' && is_numeric($arg[1])) {
+	   
+        $news_nid=drupal_get_path_alias('node/' . $arg[1]);
+        $spilt=explode('/',$news_nid); 
+        if(in_array($spilt[0], $valid_pages)) { 
+            	$bool = TRUE;
+        }else if(in_array(drupal_get_path_alias('node/' . $arg[1]), $valid_pages)) {
+		  
+				$bool = TRUE;
+		}
+        else {
+			$bool = FALSE;
+	   }
+   }else{
+        $bool=FALSE;
+   }
+   return $bool;
+   
+}
+
+function _custom_download() {
+	$downloadType = arg(1);
+	return theme("custom_download",$downloadType);
+}
+
+function _faq() {
+	return theme("faq");
+}
+
+function _custom_downloads_side_bar(){
+   
+   global $base_url;
+   //$output.='<h1 class="entry-title">Downloads</h1>';
+   $output .= '<div class="leftnav"><aside class="span3 leftside"><ul>';
+   
+   if(arg(1)=="claims"){
+		$classClaims = "current";
+   }else{
+		$classClaims = "";
+   }
+   $output .= '
+	<li><a class="'.$classClaims.'" href="'.$base_url.'/download/claims">Claim Forms</a></li>';
+   if(arg(1)=="brochures"){
+		$classBrochure = "current";
+   }else{
+		$classBrochure = "";
+   }
+   $output .= '<li><a class="'.$classBrochure.'" href="'.$base_url.'/download/brochures">Brochures</a></li>';   
+   $output .= '</ul></aside></div>';
+   return $output;
+}
+
+function _custom_faqs_side_bar(){
+  global $base_url;
+  //$output.='<h1 class="entry-title">FAQs</h1>';
+  $output .= '<div class="leftnav"><aside class="span3 leftside"><ul>';
+   
+   if(arg(1)=="featured"){
+		$class = "current";
+   }else{
+		$class = "";
+   }
+   $output .= '
+	<li><a class="'.$class.'" href="'.$base_url.'/faq/featured">Featured</a></li>';
+	
+   if(arg(1)=="claims"){
+		$class = "current";
+   }else{
+		$class = "";
+   }
+   $output .= '
+	<li><a class="'.$class.'" href="'.$base_url.'/faq/claims">Claims</a></li>';
+   if(arg(1)=="how-to-buy"){
+		$class = "current";
+   }else{
+		$class = "";
+   }
+   $output .= '
+	<li><a class="'.$class.'" href="'.$base_url.'/faq/how-to-buy">How to buy</a></li>';
+   if(arg(1)=="health-insurance"){
+		$class = "current";
+   }else{
+		$class = "";
+   }
+   $output .= '
+	<li><a class="'.$class.'" href="'.$base_url.'/faq/health-insurance">Health Insurance</a></li>';
+	if(arg(1)=="policy-cover"){
+		$class = "current";
+   }else{
+		$class = "";
+   }
+   $output .= '
+	<li><a class="'.$class.'" href="'.$base_url.'/faq/policy-cover">Policy cover</a></li>';
+	if(arg(1)=="service"){
+		$class = "current";
+   }else{
+		$class = "";
+   }
+   $output .= '
+	<li><a class="'.$class.'" href="'.$base_url.'/faq/service">Service</a></li>';
+   if(arg(1)=="login-help"){
+		$class = "current";
+   }else{
+		$class = "";
+   }
+   $output .= '
+	<li><a class="'.$class.'" href="'.$base_url.'/faq/login-help">Login Help</a></li>';
+   $output .= '</ul></aside></div>';
+   return $output;
+}
+
+
+function template_preprocess_custom_download(&$variables){
+	$variables = array();
+	$variables["downloadType"] = arg(1);
+}
+
+function template_preprocess_faq(&$variables){
+
+    global $theme;
+    drupal_add_js(drupal_get_path('theme',$theme).'/js/expand.js');
+    drupal_add_js(drupal_get_path('module','site_structure').'/js/site_structure.js');
+    //	drupal_add_css(drupal_get_path('module','news_media').'/css/menu_a_style.css');
+    //drupal_add_js(drupal_get_path('module','news_media').'/js/jquery.nestedAccordion.js');
+    //drupal_add_js(drupal_get_path('module','news_media').'/js/news_media.js');
+	$variables = array();
+	$alias = arg(1);
+	$variables["faqType"] = arg(1);
+	$path = drupal_lookup_path("source", $alias);
+	$node = menu_get_object("node", 1, $path);
+	$variables["node"] = $node;
+}
+function _disclaimers(){
+    return theme("disclaimers");
+}
+function template_preprocess_disclaimers(&$variables){
+    
+    drupal_add_css(drupal_get_path('module','news_media').'/css/menu_a_style.css');
+    drupal_add_js(drupal_get_path('module','news_media').'/js/jquery.nestedAccordion.js');
+    drupal_add_js(drupal_get_path('module','news_media').'/js/news_media.js');
+}
+
+function _site_show_quote(){
+    
+    
+    $arg = arg();
+    
+    
+    $bool='';
+	$node = menu_get_object();
+    
+    if(isset($node) && $node){
+        $plan_page = $node->type == 'plan';    
+        
+    }
+    
+    if($arg[0]=='plans' && $arg[1]=='calculate-premium'){
+        $block_url=implode('/',$arg);
+    }
+    
+    $valid_pages = array(
+        'plans/calculate-premium'=>'plans/calculate-premium',
+    );
+      if(isset($block_url)){
+        
+        if(in_array($block_url,$valid_pages)){
+            $bool=TRUE;
+                    
+        }else{     
+            $bool=FALSE;    
+        }
+     }else if(isset($plan_page) && $plan_page){
+        //dpr($plan_page);exit;
+        $bool=TRUE;
+     }else{
+        $bool=FALSE;
+     }
+     /*
+    if(isset($_GET['quote_id'])){
+           
+        if(isset($plan_page) && $plan_page){
+            $bool=TRUE; 
+        }
+    }else{
+        $bool=FALSE;      
+    }*/
+    
+    return $bool;
+}
+
+function _site_show_bottom(){
+    $arg = arg();
+    $bool='';
+	$node = menu_get_object();
+    
+    if(isset($node) && $node){
+        $plan_page = $node->type == 'plan';    
+        
+    }
+    
+    if($arg[0]=='plans' && $arg[1]=='calculate-premium'){
+        $block_url=implode('/',$arg);
+    }
+    
+    $valid_pages = array(
+        'plans/calculate-premium'=>'plans/calculate-premium',
+    );
+    if(isset($block_url)){
+        if(in_array($block_url,$valid_pages)){
+            $bool=TRUE;        
+        }else{     
+            $bool=FALSE;    
+        }
+     }else if(isset($plan_page) && $plan_page){
+        //dpr($plan_page);exit;
+        $bool=TRUE;
+     }
+    return $bool;
+}
+
+function _site_show_on_addon(){
+    $arg = arg();
+    $bool='';
+	$node = menu_get_object();
+    
+    if(isset($node) && $node){
+        $plan_page = $node->type == 'plan';    
+        
+    }
+    if(isset($plan_page) && $plan_page){
+        //dpr($plan_page);exit;
+        $bool=TRUE;
+     }else{
+        $bool=FALSE;
+     }
+    return $bool;
+}
+/**
+ * 
+ * Implements hook_form_alter().
+ * 
+ */
+function site_structure_form_alter(&$form, &$form_state, $form_id){
+    
+    if($form_id=='user_register_form'){
+        
+        //$form_state['redirect']='node/147';
+        //dpr($form_state);exit;
+    }
+    
+}
+
+function set_loggedin_user_details(){
+    
+    global $user;
+    //dpr($user);exit;
+    if($user->uid){
+        $user_data = user_load($user->uid);
+            if(isset($user_data->data['ulogin'])){
+                
+                $timestamp=strtotime($user->data['ulogin']['bdate']);
+                $year=date('Y',$timestamp);
+                $month=date('n',$timestamp);
+                $day=date('j',$timestamp);
+                $dob = array('year' => $year, 'month' => $month, 'day' => $day);
+                $edit=array(
+                    'data'=>array(
+                        'ulogin' => $user->data['ulogin'],
+                        'first_name'=> isset($user_data->data['ulogin']['first_name']) ? $user_data->data['ulogin']['first_name'] : '',
+                        'last_name'=> isset($user_data->data['ulogin']['last_name']) ? $user_data->data['ulogin']['last_name'] :'',
+                        'mobile_no'=> $mobile_no,//$user->data['mobile_no'],
+                        'dob' => !empty($dob) ? $dob : '',
+                        'gender' => $user_data->data['ulogin']['sex'],
+                        'picture' => $user_data->data['ulogin']['photo'] 
+                    ),
+                );
+                $user = user_save($user_data,$edit);
+            }
+    }
+}
+function _site_application_details(){
+    
+    global $user;
+    
+    $output= pop_callback(); 
+   
+    if(isset($_SESSION['quick_quote'])){
+        
+     //       $quote_details=quote_details($_SESSION['quick_quote']['initial_quote_no']);
+               
+            $quote_id=$_SESSION['quick_quote']['quote_no'];
+            $quote_details=quote_details_by_id($quote_id);
+                        
+            $add_cnt=addon_count($quote_id);
+    }
+    if(isset($_SESSION['guestuser'])){
+        
+        $guestuser=$_SESSION['guestuser'];
+    }
+             
+    if(isset($_SESSION['user_details'])){
+        
+        $values=$_SESSION['user_details'];
+    }
+    $ageTime=$quote_details['dob'];
+    $age=calculate_age($ageTime);
+    if(isset($user->data['mobile_no']) && !empty($user->data['mobile_no'])){
+        
+        $mob=$user->data['mobile_no'];
+    }else{
+        
+        $mob=(isset($guestuser->data['mobile_no']) ? $guestuser->data['mobile_no']:$_SESSION['mobile_no']);
+    }
+    if(!empty($quote_details['finalpremium'])){
+    
+         $finalPremium=$quote_details['finalpremium'];
+         
+    }else{
+        
+        $finalPremium=$quote_details['total_premium'];
+    }
+    global $theme;
+    if(isset($user->data['picture'])){
+        $src = $user->data['picture'];
+    }else{
+        $src = url(drupal_get_path('theme',$theme)).'/images/man_icon.jpg';
+    }
+    
+    
+    $planname=_plan_ws_short_name($quote_details['planid']);
+    
+  //  dpr($planname);exit;
+    
+    $output.='<div class="purchasename">
+      <blockquote>
+        <div class="listview">
+          <article class="art1">
+            <div class="imgicon"> <img src="'.$src.'" width="33" height="34" alt=""/> </div>
+            <div class="datal">
+              <aside>
+                <h1>PROPOSER DETAILS</h1>
+                <ul>
+                  <li><span>Name</span>&nbsp;&nbsp;'.(isset($user->data['first_name']) ? $user->data['first_name'] : $guestuser->data['first_name']) ."&nbsp;&nbsp;".(isset($user->data['last_name']) ? $user->data['last_name'] : $guestuser->data['last_name']).'</li>
+                  <li><span>Email</span>&nbsp;&nbsp;'.(isset($user->mail) ? $user->mail : $guestuser->mail).'</li>';
+                       
+                    $output.='<li class="last"><span>Mobile</span>&nbsp;&nbsp;'.$mob.'</li>';
+                  $output.='
+                </ul>
+              </aside>
+            </div>
+          </article>
+        </div>
+        <div class="listview1">
+          <article class="art2">
+            <div class="datal">
+              <aside>
+                <h1>PLAN</h1>
+                <ul>
+                  <li>'.$planname.'</li>
+                  <li><span>Sum Insured</span>&nbsp;&nbsp;'.($quote_details['sum_insured']/100000).' LAKHS</li>
+                  <li class="last"><span>Add-Ons</span>&nbsp;&nbsp;'.(isset($add_cnt) ? $add_cnt : 'NONE' ).'</li>
+                </ul>
+              </aside>
+            </div>
+          </article>
+        </div>
+        <div class="listview2">
+          <article class="art3">
+            <div class="datal">
+              <aside>
+                <h1>MEMBERS</h1>
+                <ul>
+                  <li>'.$quote_details['no_adults'].' ADULTS</li>
+                  <li>'.$quote_details['no_childs'].' CHILD</li>
+                  <li class="last"><span>Eldest</span>&nbsp;&nbsp;'.$age.'yrs</li>
+                </ul>
+              </aside>
+            </div>
+          </article>
+        </div>
+        <div class="listview3">
+          <article class="art4">
+            <div class="datal">
+              <aside>
+                <h1>COVERAGE PERIOD</h1>
+                <ul>
+                  <li>'.$quote_details['tenure'].' years</li>
+                </ul>
+                <h1 class="title">PREMIUM PAYABLE</h1>
+                <ul>
+                  <li class="last"><img src="'.url(drupal_get_path('theme',$theme)).'/images/rupes_sing.png" width="12" height="15" alt="">&nbsp;<span>'.number_format($finalPremium).'</span></li>
+                </ul>
+              </aside>
+            </div>
+          </article>
+        </div>
+        <div class="listview5">
+          <article class="art5">
+            <div class="datal">
+              <aside>
+                <h1>NEED ASSISTANCE?</h1>
+                <p>Our experts can guide you <br />
+                  through this. You can have <br />
+                  us call you back.</p>
+                <a href="#" class="big-link" data-reveal-id="myModal777" data-animation="none">Call me back</a>
+              </aside>
+            </div>
+          </article>
+        </div>
+      </blockquote>
+    </div>';
+    return $output;
+}
+/**
+ * Impelements calcalation for impelementing age years.
+ * 
+ */
+function calculate_age($ageTime){
+    
+    $bday=new DateTime(date('j.n.Y',$ageTime));
+    $today = new DateTime(date('j.n.Y', time()));
+    
+    $age = $today->diff($bday);
+    return $age->y; // Returns No of Years
+    
+}
+function validate_adult(){
+    global $adult;
+    $newdate = strtotime ( '-18 years' ,time() ) ;
+    $year=(int)(date('Y',$newdate));
+    $month=(int)(date('n',$newdate));
+    $day=(int)(date('j',$newdate));
+    $years = array_combine(range(1900,$year),range(1900,$year));
+    $raw_months = array('Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec');
+    $months = array_combine(range(1,$month),array_slice($raw_months, 0, $month));
+    $days = array_combine(range(1,$day),range(1,$day));
+    $valid_dates= array('year'=>$year,'month'=>$month,'day'=>$day,'years'=>$years,'months'=>$months,'days'=>$days);
+    $adult = $valid_dates;
+    //dpr($valid_dates);
+    //$date = $year.'-'.$month.'-'.$day;
+    //echo date("M", strtotime($date));
+    //$valid_date = 
+    //dpr($year.'/'.$month.'/'.$day);die;
+}
+function getCities(){
+    global $cities;
+    $result = db_select('cities', 'c')
+            ->fields('c')
+            ->orderBy('c.city_name')
+            ->execute()
+            ->fetchAll();
+    if($result){
+        $cities=array();
+        foreach($result as $city){
+            $cities[$city->cid] = $city->city_name;
+        }
+    }
+    $cities = $cities;
+}
+// use for sfdc errors
+function callback_receive(){
+   global $sforce;
+    $leadArray = array(
+                //'FirstName' => '',
+                'LastName' => 'Unkown',
+                //'Email' => '',
+                'MobilePhone' => $_POST['phoneNumber'],
+                'cgn_Lead_Fallout_Stage__c' => 'Generic Call me Back',
+            );
+            
+    $sf_result = $sforce->mapSforceLead($leadArray,'Lead');
+    sfdcErrors($sf_result,'Lead');
+}
+
+function sfdcErrors($sf_result,$object){
+    if(is_object($sf_result)){
+                if($sf_result->success == 1){
+                    return true;
+                }else{
+                    $error = $sf_result->errors->message;
+                    watchdog('sfdc', "Error: %error<br> | %object", array('%error' => $error,'%object' => $object), WATCHDOG_ERROR);
+                    return false;
+                }
+               
+        }else{
+            $error = $sf_result;
+            watchdog('sfdc', "Error: %error<br> | %object", array('%error' => $error,'%object' => $object), WATCHDOG_ERROR);
+            return false;
+        }
+} 
+
+function site_structure_webform_submission_insert($component,$form_state) {
+    global $sforce;
+    if($form_state->nid == '74'){
+        $leadArray = array(
+            'FirstName' => $form_state->data['1']['value']['0'],
+            'LastName' => $form_state->data['2']['value']['0'],
+            'Email' => $form_state->data['3']['value']['0'],
+            'MobilePhone' => $form_state->data['4']['value']['0'],
+            'cgn_Lead_Fallout_Stage__c' => 'Lead Form',
+        );
+        $sf_result = $sforce->mapSforceLead($leadArray,'Lead');
+        sfdcErrors($sf_result,'Lead');
+        return true;
+    }
+    if($form_state->nid == '75'){
+        $leadArray = array(
+            'FirstName' => $form_state->data['1']['value']['0'],
+            'LastName' => $form_state->data['2']['value']['0'],
+            'Email' => $form_state->data['5']['value']['0'],
+            'MobilePhone' => $form_state->data['4']['value']['0'],
+            'cgn_Lead_Fallout_Stage__c' => 'Lead Form',
+        );
+        $sf_result = $sforce->mapSforceLead($leadArray,'Lead');
+        sfdcErrors($sf_result,'Lead');
+        return true;
+    }
+}
+function get_app_code($app_id){
+    $code = 'A00000000';
+    $var = $app_id;
+    $length = strlen($var);
+    $new_var = substr($code,0,-$length);
+    $quote_code = $new_var.$var;
+    return $quote_code;
+}
+function get_quote_code($quote_id){
+    $code = 'Q00000000';
+    $var = $app_id;
+    $length = strlen($var);
+    $new_var = substr($code,0,-$length);
+    $quote_code = $new_var.$var;
+    return $quote_code;
+}
+// with form service request pop
+function _service_request(){
+    
+    $service_form=drupal_get_form('service_request_form');
+      
+    $render=render($service_form);
+       
+    $output ='<div id="servicerequestmodal" class="servicerequestmodal">
+                <div id="myModal778" class="reveal-modal">'.$render;
+                
+    $output .="<a class='close-reveal-modal'><img src='sites/all/themes/cigna_ttk_2/images/closed.png'/></a></div></div>";
+    
+    return $output;
+}
+
+//form for service request pop
+function service_request_form($form,&$form_state){
+    
+    global $user, $base_url;
+    
+    if($user->uid==0){
+        
+        if(isset($_SESSION['guestuser'])){
+        
+            $guestuser=$_SESSION['guestuser'];
+         }
+    }else{
+        $guestuser=$user;
+    }
+    
+    $query=db_select('applications','a');
+    $query->fields('a')
+          ->condition('a.user_id',$guestuser->uid);    
+    $result = $query->execute()->fetchAssoc();
+            
+    $form['topTitle']=array(
+        '#type'=>'item',
+        '#markup'=>'<h3>SERVICE REQUEST</h3>                    
+                    <div class="subtitle">
+                        Service request for your Policy Number:<b>'.$result['policy_no'].'</b>
+                    </div>',
+    );
+    
+    $form['errinfo']= array(
+	   '#type' => 'hidden',
+	);
+    
+    $form['policy_no']= array(
+	   '#type' => 'hidden',
+       '#value' => $result['policy_no'],
+	);
+    
+    $form['requestNature']=array(
+        '#type'=>'item',
+        '#prefix'=>'<div class="typeselection">',
+//        '#suffix'=>'</div>',
+        '#markup'=>'Nature of Request :',
+    );
+    
+    $form['type_selection_area']=array(
+        '#prefix' => '<div id="type_ajax_replacing">',
+        '#suffix' => '</div>',
+    );
+    
+    $option_type = drupal_map_assoc(array(
+        t('Type'),
+        t('Policy Related'),
+        t('Renewal'),
+        t('Change in Policy Information'),
+        t('Grievances / Complaints'),
+        t('Claims'),
+        t('Billing Related'),
+        t('Request Documents'),
+        t('Profile Information'),
+        t('Others'),
+    ));
+          
+    $selected = isset($form_state['values']['type']) ? $form_state['values']['type'] : key($option_type);
+    
+    $form['type'] = array(
+        '#type' => 'select',
+		'#prefix'=> '<div class="service_request_selectbox">',
+        '#options' => $option_type,
+        '#default_value' => $selected,
+        '#ajax' => array(
+                    'callback' => 'ajax_dependent_dropdown_callback',
+                    'wrapper'=>'dropdown-second-replace',
+                    ),        
+    );
+    
+    //to disable second sub type if it empty for corresponding type
+    $type2 = false;
+    if ($selected == 'Type' || $selected == 'renewal')
+    {
+        $type2 = true;
+    }
+    
+    $form['sub_type'] = array(
+        '#type' => 'select',
+        '#disabled' => $type2,
+        '#prefix'=>'<div id="dropdown-second-replace">',
+        '#suffix'=>'</div></div></div>',
+        '#options' => _ajax_option_subtype($selected),
+        '#default_value' => !empty($form_state['values']['sub_type']) ? $form_state['values']['sub_type'] : '',        
+    );
+                        
+    $form['body']=array(
+        '#type'=>'item',               
+        '#markup'=>'<div class="customername"> From : <b>'.$user->mail.'</b></div>
+                    <div class="description">
+                        Lorem ipsum dolor sit amet, Policy Number: '.$result['policy_no'].' consectetur adipiscing elit. Curabitur
+                        congue quam et nunc interdum tristique. Etiam ac lacus massa. Vivamus varius sem sit
+                        amet neque ornare at molestie felis scelerisque.<br/>
+                        Duis gravida aliquam justo et consectetur. Duis semper condimentum aliquet. Donec ipsum
+                        magna, dapibus et ornare et, molestie vel erat. Donec vitae nisi et tortor accumsan pellentesque.
+                    </div>',
+    );
+    
+    $form['submit'] = array(
+        '#type' => 'submit',
+        
+        '#ajax' => array(
+                    'callback' => '_ajax_type_selection',
+                    'wrapper' => 'type_ajax_replacing',
+                    ),
+                    
+        '#value' => t('Send'),                    
+    );
+
+/*    
+    $form['cancel'] = array(
+		'#markup' =>t('Cancel'),
+		'#prefix'=>'<a href="'.$base_url.'" class="big-link">',
+		'#suffix'=>'</a>',
+	);
+*/
+    $form['cancel'] = array(
+		'#markup' =>t('Cancel'),
+		'#prefix'=>'<a class="cancel-reveal-modal big-link" style="margin-left: 10px; margin-top: 5px;">',
+		'#suffix'=>'</a>',
+	);
+   
+    return $form;
+}
+
+function service_request_form_submit($form, $form_state){
+    
+    global $user, $base_url;     
+      
+    $values=$form_state['values'];
+    
+    //echo "<pre>";
+    //print_r($values);
+    //exit;
+    
+    $type = $values['type'];
+    $sub_type = $values['sub_type'];
+    $policy_no = $values['policy_no'];
+    
+    $result=db_insert('service_request')
+                    ->fields(array(
+                          'policy_number' => $policy_no,
+                          'request_type' => $type,
+                          'request_sub_type' => $sub_type,
+                          'name' => $user->name,
+                          'request_date' => date('Y-m-d'),
+                          'request_status' => 'pending'
+                        ))->execute();
+                
+    $to = $user->mail;
+//    $to ="fidensamit@gmail.com";
+    
+    //$subject = "Service Request of ".$type;
+    //$message = "Hi,\nDear ".$user->name.",\n This is system generated message for your request for service of ".$type." ".$sub_type.".\n We will get back to you as soon as possible";
+    $from = "admin@cigna.com";
+    $headers = "From:" . $from;
+    
+    $params['type']=$type;
+    $params['sub_type']=$sub_type;
+    $params['user']= $user->name;
+    
+//email sending to customer  
+    try{
+        drupal_mail('site_stucture', 'request', $to, language_default(), $params, $from);
+    }
+    catch (Exception $e){
+        drupal_set_message(t('Mail could not be send'), 'error');
+    }
+    
+    
+                
+//    drupal_goto();
+
+    if ($result)
+    {
+        //echo "Your service request is received"; 
+        //exit;
+        ctools_include('ajax');
+        ctools_add_js('ajax-responder');
+        $commands[] = ctools_ajax_command_redirect($base_url);
+        //echo "-----after------";
+        print ajax_render($commands);
+        exit; 
+    }   
+    
+}
+
+function site_stucture_mail($key, &$message, $params) {
+    
+    switch($key) {
+      case 'request':
+                
+        $message['send'] = TRUE;        
+        $langcode = $message['language']->language;
+        
+        if (($params['sub_type'] == '')){
+            
+            $message['subject'] = t('Service Request of '.$params['type']);
+            $message['body'][] = t("Hi,\nDear ".$params['user'].",\n This is system generated message for the service request of Type : ".$params['type'].".\n We will get back to you as soon as possible.");
+        }
+        else{
+            
+            $message['subject'] = t('Service Request of '.$params['type'].' '.$params['sub_type']);
+            $message['body'][] = t("Hi,\nDear ".$params['user'].",\n This is system generated message for the service request of Type : ".$params['type']." and Sub Type : ".$params['sub_type'].".\n We will get back to you as soon as possible.");
+        }
+        
+        break;
+    }
+}
+
+function _ajax_type_selection($form,&$form_state){
+    
+    return $form['type_selection_area'];    
+}
+
+function service_request_form_validate($form, $form_state){
+    $values=$form_state['values'];
+//    print_r($values); exit;
+    
+    if(empty($values['type']) || (($values['type']) == 'Type'))
+    {
+        form_set_error('errinfo','Please Select Type');
+    }
+    //[sub_type] => 
+    if((($values['sub_type']) == 'Sub Type') && (($values['type']) != 'renewal'))
+    {
+        form_set_error('errinfo','Please Select Sub Type');
+    }
+    
+}
+
+function ajax_dependent_dropdown_callback($form, $form_state){
+    return $form['sub_type'];
+}
+
+function _ajax_option_subtype($key ='')
+{
+    $options = array(
+    
+    'Type' => drupal_map_assoc(array(t('Sub Type'))),
+        
+    'Policy Related' => drupal_map_assoc(array( 
+                                                t('Application status'), 
+                                                t('Policy Coverage Inquiry'),
+                                                t('Queries on Premium charged'),
+                                                t('Medical Tests'),
+                                                t('Policy documents request'),
+                                                t('Other'))),
+                                                
+    'Change in Policy Information' => drupal_map_assoc(array(                                                
+                                                t('Change in Permanent Address'),
+                                                t('Correction in Customer Name'),
+                                                t('Change of Policyholder'),
+                                                t('Deletion of Insured Member'),
+                                                t('Change in DOB'),
+                                                t('Inclusion of Dependent/ Insured Member'),
+                                                t('Change in Customer Name'),
+                                                t('Correction in Gender'),
+                                                t('Change of Nominee'),
+                                                t('Correction in Relationship'),
+                                                t('Changes/ Addition of Special Conditions'))),
+                                                                                   
+    'Grievances / Complaints'=>drupal_map_assoc(array(                                                
+                                                t('Policy Related'),
+                                                t('General'),
+                                                t('Claim Related'))),
+    
+    'Claims'=>drupal_map_assoc(array(                                                
+                                                t('Status Inquiry'),
+                                                t('Process'),
+                                                t('Claims payment details'),
+                                                t('Claims disallowance explanation'))),
+    
+    'Billing Related'=>drupal_map_assoc(array(                                                
+                                                t('Billing Issues'),
+                                                t('Premium Refund'))),
+    
+    'Request Documents'=>drupal_map_assoc(array(                                                
+                                                t('Cancellation Certificate'),
+                                                t('Medical Reports'))),
+    
+    'Profile Information'=>drupal_map_assoc(array(                                                
+                                                t('Change in Contact Details (Phone / Email ID)'),
+                                                t('Change in Communication Address'))),
+    
+    'Others'=>drupal_map_assoc(array(                                                
+                                                t('DNC Registry'))),
+    );
+  
+    if (isset($options[$key])) {
+        return $options[$key];
+    }
+    else {
+        return array();
+    }
+}
+
+//admin_list_service_request
+function admin_list_service_request($form,&$form_state){
+    
+    global $base_url,$theme;
+    
+    $options = array();
+	$header = array(
+		'counter'=> array('data' => t('Select All')),        
+        'policy_number' => array('data'=>t('Policy Number')),
+        'request_type' => array('data'=>t('Request Type')),
+        'request_sub_type' => array('data'=>t('Request Sub Type')),
+        'name' => array('data'=>t('Customer Name')),
+        'request_date' => array('data'=>t('Request Date')),
+        'request_status' => array('data'=>t('Request Status')),
+        'request_comment' => array('data'=>t('Comment')),      
+		'edit'=>'',
+//		'delete' => '',
+	);
+    
+    $query=db_select('service_request','n')
+           ->fields('n')           
+           ->execute()->fetchAll();
+     
+    $inc=0;
+   
+    $destination = drupal_get_destination();
+          
+    foreach($query as $req){
+    
+        $inc++;               
+
+        $options[$req->service_request_id] = array(
+                'counter'=>'<span class="number">'.$inc.'</span>', 
+                'policy_number' => $req->policy_number,
+                'request_type' => $req->request_type,
+                'request_sub_type' => $req->request_sub_type,
+                'name' => $req->name,
+                'request_date' =>  $req->request_date,
+                'request_status' =>  $req->request_status,                
+                'request_comment' =>  $req->request_comment,
+                'edit' =>l('edit', 'admin/service_request/'. $req->service_request_id .'/edit', array('query' => drupal_get_destination(),'attributes'=>array('class'=>array('admin-edit-button')))),
+//                'delete' => l('delete', 'node/'. $req->service_request_id .'/delete', array('query' => drupal_get_destination(),'attributes'=>array('class'=>array('admin-delete-button')))),
+        
+        );            
+    }
+    
+    $form['select_list'] = array(
+      '#type' => 'tableselect',
+      '#header' => $header,
+      '#options' => $options,
+      '#empty' => t('No content available.'),
+      '#attributes' => array('class'=>array('admin-table-design'),'id'=>array('admin-table-custom')),
+    );
+     
+    $form['action'] = array(
+		'#prefix'=>'<div class="admin-cancel-submit">',
+		'#suffix'=>'</div>',	
+	);
+    $form['action']['delete'] = array(
+		'#type' => 'submit',
+		'#value' => t('Delete'),
+		'#attributes' => array('class' => array('admin-submit'),'id'=>array('admin-validate-delete')),
+	);
+    $form['action']['cancel'] = array(
+		'#markup' =>t('Cancel'),
+		'#prefix'=>'<a href="'.$base_url.'/admin/list/signages">',
+		'#suffix'=>'</a>',
+	);
+    
+    return $form;   
+}
+
+function request_edit($form,$form_state,$id){ 
+
+    $query=db_select('service_request','m')
+           ->fields('m')
+           ->condition('m.service_request_id',$id)           
+           ->execute()->fetchAssoc();
+    
+    $form['request_id'] =array(
+        '#type'=>'hidden',
+        '#value'=>$id,
+    );
+    
+    $form['status'] =array(
+        '#title' => t('Request Status'),
+        '#type'=>'select',
+        '#options'=>drupal_map_assoc(array(t('Pending'), t('Complete'))),
+        '#default_value' => $query['request_status'],
+    );
+    
+    $form['comment']=array(
+        '#title' => t('Comment'),
+        '#type'=>'textarea',
+        '#default_value' => empty($query['request_comment'])?'':$query['request_comment'],
+    );
+       
+    $form['submit'] = array(
+        '#type' => 'submit',
+        '#value' => t('Save'),
+    );
+    
+    $form['cancel'] = array(
+        '#markup' => l(t('Cancel'), 'admin/list/service_request'),
+    );
+    
+    return $form;
+    
+}
+
+function request_edit_submit($form, $form_state){
+  
+    $values=$form_state['values'];      
+    
+    db_update('service_request')
+            ->fields(array(                  
+                  'request_status' => $values['status'],
+                  'request_comment' => $values['comment'],
+                ))
+            ->condition('service_request_id',$values['request_id'])
+            ->execute();               
+    
+}
+
+function _user_login_banner(){
+    
+    global $base_url;
+    
+    $elements = drupal_get_form('user_login');  
+    
+    $output = '<div class="topaddtext">
+                <h1><img src="'.$base_url.'/sites/all/themes/cigna_ttk_2/images/i_am_with.png" /></h1>
+                <div class="optionpanel logind">';
+    
+    unset($elements['userlogin_fb_title']);
+    unset($elements['goThroughSteps']);
+    unset($elements['new_user']);
+    unset($elements['links']);
+    unset($elements['#defaults_loaded']);
+    
+    $fb_login = $elements['ulogin'];
+    
+    unset($elements['ulogin']);
+    
+    $elements['name']['#attributes'] = array('placeholder' => t('Username'));
+    
+    unset($elements['name']['#title']);
+    unset($elements['name']['#required']);
+    
+    $elements['pass']['#attributes'] = array('placeholder' => t('Password'));
+
+    unset($elements['pass']['#title']);
+    unset($elements['pass']['#required']);
+    
+    $output.= drupal_render($elements);
+    
+    $output.='<ul class="loginarea">                    
+                    <li class="register"><a href="'.$base_url.'/'.drupal_get_path_alias('user/register').'">REGISTER</a></li>
+                    <li class="forgetpassd"><a href="'.$base_url.'/'.drupal_get_path_alias('user/password').'">Forgot Password?</a></li>
+                  </ul>';
+                  
+    $output.='<div class="facebookicon">'.drupal_render($fb_login).'</div>
+                </div>
+              </div>';    
+                
+    return $output;
+}

@@ -1,0 +1,11 @@
+name = Plans
+description = Displays all plans and plans details
+
+stylesheets[all][] = css/plans.css
+stylesheets[all][] = css/accordion_style.css
+scripts[] = js/ddaccordion.js
+
+version = "7.x-0.1"
+core = 7.x
+package = CHSI
+project = CignaTTK

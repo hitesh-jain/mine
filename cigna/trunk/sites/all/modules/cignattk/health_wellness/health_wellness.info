@@ -1,0 +1,4 @@
+name = Health & Wellness
+description = Shows the Health & Wellness content. 
+package = CHSI
+core = 7.x

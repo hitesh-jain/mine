@@ -1,0 +1,1131 @@
+<?php
+
+/**
+ * 
+ * Implements hook_init()
+ * 
+ */
+
+function get_quote_init(){
+            
+    drupal_session_start();
+    drupal_add_js(drupal_get_path('module','get_quote').'/js/test.js');
+}
+
+
+/**
+ *  Implements hook_permission().
+ * 
+ */
+function get_quote_permission(){
+    
+    return array(
+        'show quote'=>array(
+            'title'=>'Showing get quote',
+        ),
+    );
+}
+/**
+ * Implements hook_menu()
+ * 
+ */
+ function get_quote_menu(){
+    
+    $items=array();
+    
+    /*$items['get_quote/%ctools_js/details'] = array(
+      'title' => 'Get Quotation',
+      'page callback' => 'quote_ajax_details_form',
+      'page arguments' => array(1),
+      'access callback' => TRUE,
+      'type' => MENU_CALLBACK,
+    );*/
+    $items['common/%ctools_js/details'] = array(
+      'title' => 'Get Quotation',
+      'page callback' => 'common_details_form',
+      'page arguments' => array(1),
+      'access callback' => TRUE,
+      'type' => MENU_CALLBACK,
+    );
+    $items['get_quote/ajax/slider/premium'] = array(
+      'page callback' => 'slider_ajax_premium',
+      'access callback' => TRUE,
+      'type' => MENU_CALLBACK,
+    );
+    $items['get_quote/ajax/people/count'] = array(
+      'page callback' => 'people_ajax_count',
+      'access callback' => TRUE,
+      'type' => MENU_CALLBACK,
+    );
+    $items['quote/suggestion/details'] = array(
+      'page callback'=>'drupal_get_form',
+      'page arguments' => array('suggestion_first_details'),
+      'access callback' => TRUE,
+      'type' => MENU_CALLBACK,
+    );
+     $items['get_quote/ajax/data/save'] = array(
+      'page callback' => 'people_ajax_data_save',
+      'access callback' => TRUE,
+      'type' => MENU_CALLBACK,
+    );
+    $items['quick_quotation/ajax/lead/save'] = array(
+      'page callback' => 'people_ajax_lead_save',
+      'access callback' => TRUE,
+      'type' => MENU_CALLBACK,
+    );
+     
+     
+    return $items;
+ }
+ function people_ajax_lead_save(){
+    $values=$_POST;
+    //prinT_r($values);die;
+    global $user,$sforce;
+    if(!user_is_logged_in()){
+        $user_exist = user_load_by_name($values['email']);
+        $_SESSION['guestuser'] = user_load_by_mail($values['email']);
+        if(!$user_exist){
+            $account = new StdClass();
+            $account->is_new = TRUE;
+            $account->status = FALSE;
+            $account->name = $values['email'];
+            $account->pass = user_hash_password(uniqid());
+            $account->mail = $values['email'];
+            $account->init = $values['email'];
+            $account->roles = array( '2' => 'authenticated user', '5' => 'customer');
+            
+            $user = user_save($account);
+            $account = user_load($user->uid);
+            $edit = (array) $account;
+            $edit=array(
+                'data'=>array(
+                    'first_name'=> $values['first_name'],
+                    'last_name'=> $values['last_name'],
+                    'mobile_no'=> $values['phone_number'],
+                ),
+            );
+            $user = user_save($account,$edit);
+            $_SESSION['guestuser'] = $user;
+        }else{
+            $user_data = user_load_by_mail($values['email']);
+            $account1 = user_load($user_data->uid);
+            $edit = (array) $account1;
+            $edit=array(
+                'data'=>array(
+                    'first_name'=>$values['first_name'],
+                    'last_name'=>$values['last_name'],
+                    'mobile_no'=> $values['phone_number'],
+                ),
+            );
+            $user = user_save($account1,$edit);
+            $_SESSION['guestuser'] = $user;
+            
+        }
+    }else{
+        $_SESSION['mobile_no'] = $values['phone_number'];
+    }
+        
+        $leadArray = array(
+            'FirstName' => $values['first_name'] ,
+            'LastName' => $values['last_name'],
+            'Email' => $values['email'],
+            'MobilePhone' => $values['phone_number'],
+            'cgn_Lead_Fallout_Stage__c' => 'Lead Form',
+        );
+       $sf_result = $sforce->mapSforceLead($leadArray,'Lead');
+       //print_r($sf_result);die;
+       if(sfdcErrors($sf_result,'Lead')){
+            $result = db_insert('user_salesforce')
+                        ->fields(array(
+                            'uid' => $user->uid,
+                            'sf_id' => $sf_result->id,
+                       ))
+                       ->execute();
+       }
+    exit;
+    //return true;
+ }
+ 
+function people_ajax_data_save(){
+    
+    $values=$_POST;
+    
+    //dpr($values);exit;
+    if(isset($_SESSION['guestuser'])){
+        $guestuser = $_SESSION['guestuser'];
+    }
+    
+    $day=$values['people_details']['adults'][1]['day'];
+    $month=$values['people_details']['adults'][1]['month'];
+    $year=$values['people_details']['adults'][1]['year'];
+    
+    $dob=strtotime("$day-$month-$year");
+    
+    $_SESSION['people_details']=$values['people_details'];
+    global $user;
+    
+    if($user->uid==0){
+        
+        if(isset($_SESSION['guestuser'])){
+        
+            $guestuser=$_SESSION['guestuser'];
+         }
+    }else{
+        $guestuser=$user;
+    }
+    
+    $ssid=session_id();
+    $_SESSION['people_details']['uid']=$guestuser->uid;
+    $_SESSION['people_details']['sid']=$ssid;
+    
+    $_SESSION['testing']=1;
+    $_SESSION['quick_quote']['dob']=$dob;
+    $_SESSION['user_details']['dob']=$dob;
+    
+    exit;            
+        
+ }
+function slider_ajax_premium(){
+    
+    $values=$_POST;
+    $query=db_select('node','n')
+            ->fields('n',array('nid','title'))
+            ->condition('n.type','product')
+            ->range(0,2)
+            ->execute();
+    foreach($query as $result){
+        
+        $plan[$result->nid]=$result->title; 
+        echo ' Rs '.$values['sum_insured_value1'] .'050 &nbsp;&nbsp;Gold Plan'.l('Buy Now','node/'.$result->nid).'<br/>';
+        
+    }
+     exit;
+}
+function  people_ajax_count(){
+    
+    
+    $values=$_POST;
+    //dpr($values);
+    $form_state = array();
+    if(isset($values['no_adult'])){
+        
+        $form_state['build_info']['args']=array('adult_count'=>$values['no_adult'],'child_count'=>$values['no_child']);
+    }
+    
+    $form=drupal_build_form('adult_child_form',$form_state);
+
+    $render=drupal_render($form);    
+    echo $render;
+    
+    exit;
+    
+}
+function adult_child_form($form,&$form_state){
+    
+    
+    global $theme,$base_url;
+    $values='';
+    if(isset($_SESSION['quick_quote'])){
+            
+            $values=$_SESSION['quick_quote'];
+    }else{
+        $values=0;
+    }
+   $num_adults = !empty($form_state['build_info']['args']['adult_count']) ? $form_state['build_info']['args']['adult_count'] : 1;
+   $num_childs = !empty($form_state['build_info']['args']['child_count']) ? $form_state['build_info']['args']['child_count'] : 0;
+   
+   
+   $form['cycle-start']=array(
+        '#type'=>'item',
+        '#prefix'=>'<div id="carousel_home">',
+        
+    );
+    
+    for($i=1,$j=1,$g=1;$i<=($num_adults + $num_childs);$i++){
+        
+        if($i==1){
+            
+            $group_class="group_$g";
+            $form["grouped-content_$g"]=array(
+                '#type'=>'item',
+                '#prefix'=>'<div class="'.$group_class.' grouppanel" id="'.$g.'">',
+                '#suffix'=>'</div>'
+            );
+            
+        }else if($i==4){
+            
+            $g++;
+            $group_class="group_$g";
+            $form["grouped-content_$g"]=array(
+                '#type'=>'item',
+                '#prefix'=>'<div class="'.$group_class.' grouppanel" id="'.$g.'">',
+                 '#suffix'=>'</div>'
+            );
+            
+        }else if($i==7){
+            
+            $g++;
+            $group_class="group_$g";
+            $form["grouped-content_$g"]=array(
+                '#type'=>'item',
+                '#prefix'=>'<div class="'.$group_class.' grouppanel" id="'.$g.'">',
+                '#suffix'=>'</div>'
+            );
+        }else if($i==10){
+            
+            $g++;
+            $group_class="group_$g";
+            $form["grouped-content_$g"]=array(
+                '#type'=>'item',
+                '#prefix'=>'<div class="'.$group_class.' grouppanel" id="'.$g.'">',
+                '#suffix'=>'</div>'
+            );
+        }else if($i==13){
+            
+            $g++;
+            $group_class="group_$g";
+            $form["grouped-content_$g"]=array(
+                '#type'=>'item',
+                '#prefix'=>'<div class="'.$group_class.' grouppanel" id="'.$g.'">',
+                '#suffix'=>'</div>'
+            );
+        }
+        
+        if($i<=$num_adults){
+            
+            
+            $adult_default_value=db_select("get_quote_people_details",'g')
+                        ->fields('g')
+                        ->condition('quote_id',$values['quote_no'])
+                        ->condition('people_type','adult')
+                        ->condition('ordering',$i)
+                        ->execute()->fetchAssoc();
+                
+            //dpr($adult_default_value);exit;         
+            $gender=0;
+            $tobacco=0;
+            $alcohol=0;
+            $cigarette=0;
+            
+            $tobacco_consumption=0;
+            $alcohol_consumption= 0;
+            $cigarette_consumption=0;
+           // $year=date('Y');
+           // $month=date('n');
+           // $day=date('j');
+            if(isset($adult_default_value) && !empty($adult_default_value)){
+                
+                   // dpr($adult_default_value);exit;
+                    $gender=!empty($adult_default_value['gender']) ? $adult_default_value['gender'] : 0;
+                    $tobacco=!empty($adult_default_value['tobacco']) ? $adult_default_value['tobacco'] : 0;
+                    $alcohol=!empty($adult_default_value['alcohol']) ? $adult_default_value['alcohol'] : 0;
+                    $cigarette=!empty($adult_default_value['cigarette']) ? $adult_default_value['cigarette'] :0;
+                    
+                    $tobacco_consumption=!empty($adult_default_value['tobacco_consumption']) ? $adult_default_value['tobacco_consumption'] : 1;
+                    $alcohol_consumption=!empty($adult_default_value['alcohol_consumption']) ? $adult_default_value['alcohol_consumption'] : 1;
+                    $cigarette_consumption=!empty($adult_default_value['cigarette_consumption']) ? $adult_default_value['cigarette_consumption'] :1;
+                    
+                    $year=(int)(date('Y',!empty($adult_default_value['dob']) ? $adult_default_value['dob'] : time()));
+                    $month=(int)(date('n',!empty($adult_default_value['dob']) ? $adult_default_value['dob']: time()));
+                    $day=(int)(date('j',!empty($adult_default_value['dob']) ? $adult_default_value['dob'] : time()));
+                   
+            }
+            //dpr($gender);
+            $form["grouped-content_$g"]["adult_$i"]=array(
+                '#type'=>'item',
+                '#title'=>"<div class='adulttitle'>Adult $i</div>",
+				'#prefix'=>'<div class="adultfieldsdetails" id="'.$i.'">'
+            );
+            
+            $form["grouped-content_$g"]["ad_gender_$i"] = array(
+                '#type'=>'radios',
+                '#title'=>t('<b>Gender</b>'),
+                '#options'=>array(
+                    0=>'Male',
+                    1=>'Female',
+                ),
+				'#prefix'=>'<div class="formdata">',
+                '#default_value'=>isset($gender) ? $gender : 0,
+				'#suffix' => '</div>',
+                
+            );
+             if($i==1 && empty($adult_default_value)){
+                
+                    if(isset($_SESSION['user_details']['dob'])){
+                        $day=(int)(date('j',!empty($_SESSION['user_details']['dob']) ? $_SESSION['user_details']['dob']: time()));
+                        $month=(int)(date('n',!empty($_SESSION['user_details']['dob']) ? $_SESSION['user_details']['dob']: time()));
+                        $year=(int)(date('Y',!empty($_SESSION['user_details']['dob']) ? $_SESSION['user_details']['dob'] : time()));
+                    }
+            }
+            $form["grouped-content_$g"]["ad_dob_$i"]=array(
+                '#type'=>'date',
+                '#title' => t('<b>Date of Birth</b>'),
+                '#default_value'=>array(
+                    'year'=>isset($year) ? $year : (int)(date('Y')),
+                    'month'=>isset($month) ? $month : (int)(date('n')),
+                    'day'=>isset($day) ? $day : (int)(date('j')),
+                ),
+            );
+            unset($year);unset($month);unset($day);
+            $form["grouped-content_$g"]["ad_tobacco_$i"]=array(
+                '#type'=>'radios',
+                '#title'=>t('<b>Consumes</b>&nbsp;<span class="tooltip">tobacco ?</span>'),
+                '#options'=>array(
+                    0=>'No',
+                    1=>'Yes',
+                ),
+				'#prefix'=>'<div class="formdata1">',
+                '#default_value'=>isset($tobacco) ? $tobacco : 0,
+				'#suffix'=>'</div>'
+             );  
+             $form["grouped-content_$g"]["ad_tobacco_yes_$i"]=array(
+                '#type'=>'select',
+                '#options'=>array(
+                   // 0=>'No',
+                    1=>'Less than 2',
+                    2=>'More than 3',
+                ),
+                '#attributes'=>array(
+                    'class'=>array('tobacco_value'),
+                ),
+				
+                '#default_value'=>isset($tobacco_consumption) ? $tobacco_consumption : 1,
+             );
+                         
+             $form["grouped-content_$g"]["ad_alcohol_$i"]=array(
+                '#type'=>'radios',
+                '#title'=>t('<b>Consumes</b>&nbsp;<span class="tooltip">alcohol ?</span>'),
+                '#options'=>array(
+                    0=>'No',
+                    1=>'Yes',
+                ),
+				'#prefix'=>'<div class="formdata1">',
+                '#default_value'=>isset($alcohol) ? $alcohol : 0,
+				'#suffix'=>'</div>'
+             );
+             $form["grouped-content_$g"]["ad_alcohol_yes_$i"]=array(
+                '#type'=>'select',
+                '#options'=>array(
+                  //  0=>'No',
+                    1=>'Less than 60ml',
+                    2=>'More than 60ml',
+                ),
+                '#attributes'=>array(
+                    'class'=>array('tobacco_value'),
+                ),
+                '#default_value'=>isset($alcohol_consumption) ? $alcohol_consumption : 1,
+             );
+             $form["grouped-content_$g"]["ad_cigarette_$i"]=array(
+                '#type'=>'radios',
+                '#title'=>t('<b>Smokes</b>&nbsp;<span class="tooltip">Cigarette/Beedi ?</span>'),
+                '#options'=>array(
+                    0=>'No',
+                    1=>'Yes',
+                ),
+				'#prefix'=>'<div class="formdata1">',
+                '#default_value'=>isset($cigarette) ? $cigarette : 0,
+				'#suffix'=>'</div>',
+                
+             );  
+             $form["grouped-content_$g"]["ad_cigarette_yes_$i"]=array(
+                '#type'=>'select',
+                '#options'=>array(
+                   // 0=>'Select',
+                    1=>'Less than 5',
+                    2=>'More than 5',
+                ),
+                '#attributes'=>array(
+                    'class'=>array('tobacco_value'),
+                ),
+                '#default_value'=>isset($cigarette_consumption) ? $cigarette_consumption : 1,
+				'#suffix'=>'</div>',
+             ); 
+        }else if($j<=$num_childs){
+            
+            
+            $child_default_value=db_select("get_quote_people_details",'g')
+                        ->fields('g')
+                        ->condition('quote_id',$values['quote_no'])
+                        ->condition('people_type','child')
+                        ->condition('ordering',$j)
+                        ->execute()->fetchAssoc();
+            $gender=0;
+            $tobacco=0;
+            $alcohol=0;
+            $cigarette=0;
+            $tobacco_consumption=0;
+            $alcohol_consumption= 0;
+            $cigarette_consumption=0;
+           // $year=date('Y',time());
+           // $month=date('n',time());
+           // $day=date('j',time());
+            if(isset($child_default_value) && !empty($child_default_value)){
+                
+                    $gender=!empty($child_default_value['gender']) ? $child_default_value['gender'] : 0;
+                    $tobacco=!empty($child_default_value['tobacco']) ? $child_default_value['tobacco'] : 0;
+                    $alcohol=!empty($child_default_value['alcohol']) ? $child_default_value['alcohol'] : 0;
+                    $cigarette=!empty($child_default_value['cigarette']) ? $child_default_value['cigarette'] :0;
+                    
+                    
+                    $tobacco_consumption=!empty($child_default_value['tobacco_consumption']) ? $child_default_value['tobacco_consumption'] : 1;
+                    $alcohol_consumption=!empty($child_default_value['alcohol_consumption']) ? $child_default_value['alcohol_consumption'] : 1;
+                    $cigarette_consumption=!empty($child_default_value['cigarette_consumption']) ? $child_default_value['cigarette_consumption'] :1;
+                    
+                   $year=(int)(date('Y',!empty($child_default_value['dob']) ? $child_default_value['dob'] : time()));
+                   $month=(int)(date('n',!empty($child_default_value['dob']) ? $child_default_value['dob']: time()));
+                   $day=(int)(date('j',!empty($child_default_value['dob']) ? $child_default_value['dob'] : time()));
+            }
+            
+            $form["grouped-content_$g"]["child_$j"]=array(
+                '#type'=>'item',
+                '#title'=>"<div class='adulttitle'>Child $j</div>",
+				'#prefix'=>'<div class="childfieldsdetails" id="'.$j.'">'
+                
+            );
+            $form["grouped-content_$g"]["ch_gender_$j"] = array(
+                '#type'=>'radios',
+                    
+                '#title'=>t('<b>Gender</b>'),
+                '#options'=>array(
+                    0=>'Male',
+                    1=>'Female',
+                ),
+				'#prefix'=>'<div class="formdata">',
+                '#default_value'=>isset($gender) ? $gender : 0,
+				'#suffix'=>'</div>',
+            );
+            $form["grouped-content_$g"]["ch_dob_$j"]=array(
+                '#type'=>'date',
+                '#title' => t('<b>Date of Birth</b>'),
+                 '#default_value'=>array(
+                    'year'=>isset($year) ? $year : (int)(date('Y')),
+                    'month'=>isset($month) ? $month : (int)(date('n')),
+                    'day'=>isset($day) ? $day : (int)(date('j')),
+                ),
+            );
+            
+            unset($year);unset($month);unset($day);
+            
+            $form["grouped-content_$g"]["ch_tobacco_$j"]=array(
+                '#type'=>'radios',
+                '#title'=>t('<b>Consumes</b>&nbsp;<span class="tooltip">tobacco ?</span>'),
+                '#options'=>array(
+                    0=>'No',
+                    1=>'Yes',
+                ),
+				'#prefix'=>'<div class="formdata1">',
+                '#default_value'=>isset($tobacco) ? $tobacco : 0,
+				'#suffix'=>'</div>'
+                
+             ); 
+            $form["grouped-content_$g"]["ch_tobacco_yes_$j"]=array(
+               '#type'=>'select',
+                '#options'=>array(
+                    // 0=>'No',
+                    1=>'Less than 2',
+                    2=>'More than 3',
+                ),
+                 '#attributes'=>array(
+                    'class'=>array('tobacco_value'),
+                ),
+                '#default_value'=>isset($tobacco_consumption) ? $tobacco_consumption : 1,
+                
+             ); 
+             $form["grouped-content_$g"]["ch_alcohol_$j"]=array(
+                '#type'=>'radios',
+                '#title'=>t('<b>Consumes</b>&nbsp;<span class="tooltip">alcohol ?</span>'),
+                '#options'=>array(
+                    0=>'No',
+                    1=>'Yes',
+                ),
+				'#prefix'=>'<div class="formdata1">',
+                '#default_value'=>isset($alcohol) ? $alcohol : 0,
+				'#suffix'=>'</div>'
+             );
+             $form["grouped-content_$g"]["ch_alcohol_yes_$j"]=array(
+                '#type'=>'select',
+                '#options'=>array(
+                  //  0=>'No',
+                    1=>'Less than 60ml',
+                    2=>'More than 60ml',
+                ),
+                '#attributes'=>array(
+                    'class'=>array('tobacco_value'),
+                ),
+                '#default_value'=>isset($alcohol_consumption) ? $alcohol_consumption : 1,
+             );
+             $form["grouped-content_$g"]["ch_cigarette_$j"]=array(
+                '#type'=>'radios',
+                '#title'=>t('<b>Smokes</b>&nbsp;<span class="tooltip">Cigarette/Beedi ?</span>'),
+                '#options'=>array(
+                    0=>'No',
+                    1=>'Yes',
+                ),
+				'#prefix'=>'<div class="formdata1">',
+                '#default_value'=>isset($cigarette) ? $cigarette : 0,
+				'#suffix'=>'</div>',
+                
+             ); 
+             $form["grouped-content_$g"]["ch_cigarette_yes_$j"]=array(
+                '#type'=>'select',
+                '#options'=>array(
+                  //  0=>'Select',
+                    1=>'Less than 5',
+                    2=>'More than 5',
+                ),
+                '#attributes'=>array(
+                    'class'=>array('tobacco_value'),
+                ),
+                '#default_value'=>isset($cigarette_consumption) ? $cigarette_consumption : 1,
+				'#suffix'=>'</div>',
+             );  
+             $j++;
+        }
+    }
+    $form['content-cycle-end']=array(
+        '#type'=>'item',
+        '#suffix'=>'</div><div id="btn_next"><img src="'.$base_url.'/'.drupal_get_path('theme',$theme).'/images/btn_next.png" alt="Next" width="22" height="24" /></div>
+                    <div id="btn_prev"><img src="'.$base_url.'/'.drupal_get_path('theme',$theme).'/images/btn_prev.png" alt="Previous" width="22" height="24" /></div>',
+    );
+    
+    return $form;
+    
+}
+function common_details_form($js = NULL, $step = NULL){
+    
+    global $theme;
+          
+    if ($js) {
+        ctools_include('ajax');
+        ctools_include('modal');
+        $form_state = array(
+            'ajax' => TRUE,
+            'title' => t(''),
+        );
+    
+    $output = ctools_modal_form_wrapper('common_quotation_start_form', $form_state);
+    print ajax_render($output);
+    exit;
+  }else {
+    return $output;
+  }   
+}
+function  common_quotation_start_form($form,&$form_state){
+    
+    global $user;
+    global $base_url;
+    global $theme,$cities;
+    
+    //dpr($_SESSION);exit;
+   
+   $result=db_select('field_data_field_si_value','s');
+   $result->innerJoin('node','n','n.nid=s.entity_id');
+   $result->innerJoin('field_data_field_sub_plan_option','sub','s.entity_id=sub.field_sub_plan_option_target_id');   
+   $result->innerJoin('field_data_field_related_plan_id ','r','sub.entity_id=r.entity_id');
+   
+   $result->innerJoin('taxonomy_index','i','i.nid=r.field_related_plan_id_target_id');
+   $result->innerJoin('taxonomy_term_data','d','i.tid=d.tid');
+   $result->fields('s',array('field_si_value_value'))
+          ->condition('n.status',1)
+          ->condition('d.name','IPMI')
+          ->orderBy('field_si_value_value')
+          ->distinct();
+          
+    $si_values=$result->execute();
+           
+    foreach($si_values as $value){
+        
+        $si_range[]=(int)$value->field_si_value_value;
+        
+    }
+    sort($si_range);
+    drupal_add_js(array('get_quote' => array('si_range_value' => $si_range)), 'setting');
+    
+    drupal_add_css(drupal_get_path('theme',$theme).'/css/jquery-ui.css');
+    drupal_add_js(drupal_get_path('theme',$theme).'/js/jquery-1.9.1.js');
+       
+    // drupal_add_css(drupal_get_path('module','get_quote').'/css/classic.css');
+     drupal_add_js(drupal_get_path('module','quick_quotation').'/js/jquery-1.7.js');
+     drupal_add_js(drupal_get_path('module','quick_quotation').'/js/jquery-ui-1.8.16.custom.min.js');
+  //   drupal_add_js(drupal_get_path('module','quick_quotation').'/js/jQRangeSlider-withRuler-min.js');
+     drupal_add_js(drupal_get_path('theme',$theme).'/js/jquery.cycle.all.min.js');
+     drupal_add_js(drupal_get_path('module','get_quote').'/js/quote-custom.js');
+     
+     if(isset($_SESSION['clicked'])){
+        
+            if($_SESSION['clicked']==4){
+                $default=true;
+            }  
+     }
+     $form['clicked']=array(
+        '#type'=>'hidden',
+        '#value'=>isset($_SESSION['clicked']) ? $_SESSION['clicked'] : 1,
+        '#attributes'=>array(
+            'class'=>array('suggest_clicked'),
+        ),
+     );
+    $form['headline']=array(
+        '#type'=>'item',
+        '#markup'=>'<div class="revealpopdetails">
+            <h1>View the plans and premiums best suited to you<br />
+			in <strong>4 straight forward steps.</strong></h1>
+			<div class="step">Why do I need to go through these steps?</div>
+			</div',
+    ); 
+    $form['people']=array(
+        '#type'=>'item',
+        '#markup'=>'<div class="family-count">
+                        <div class="people-flow"><a href="javascript:void(0)">How many people do want insure ?</a></div>
+                     </div>',
+        
+    );
+        
+    $num_adults = !empty($form_state['values']['adults']) ? $form_state['values']['adults'] : 1;
+    $form['adults']=array(
+    
+        '#type'=>'select',
+        '#title' => t('Adults'),
+        '#prefix'=>'<div id="name-adult">',
+        '#options'=>array(
+            1=>1,
+            2=>2,
+            3=>3,
+            4=>4,
+        ),
+        '#default_value' => $num_adults,
+    );
+    $num_childs = !empty($form_state['values']['child']) ? $form_state['values']['child'] : 0;
+    $form['child']=array(
+        '#type'=>'select',
+        '#title' => t('Children<br/>(below 18 years)'),
+        '#options'=>array(
+            0=>0,
+            1=>1,
+            2=>2,
+            3=>3,
+            4=>4,
+        ),
+        '#default_value' => $num_childs,         
+    );
+    $form['ajax_loading_people']= array(
+        '#markup'=>'<div id="LoadingImage_people" style="display: none">Loading......Please Wait</div>',
+    );
+    $form['submit'] = array(
+                '#type' => 'item',
+                '#suffix'=>'<div class="count-done"><a href="javascript:void(0)">DONE</a></div></div>',
+    );
+    
+    $form['people_details']=array(
+        '#type'=>'item',
+        '#markup'=>'<div id="people-details-div">
+                        <div class="people-details-flow"><a href="javascript:void(0)">Give us a few basic details about them</a>
+                        <div class="first_done"></div></div>
+                     </div>',
+    );
+    $form['content-start']=array(
+          '#type'=>'item',
+          '#prefix'=>'<div id="user-details"><div class="details-form">'
+    ); 
+    
+    $form['content-end']=array(
+          '#type'=>'item',
+          '#suffix'=>'</div><div class="content-done"><a href="javascript:void(0)">DONE</a></div></div>'
+    );   
+    $form['user_region']=array(
+        '#type'=>'item',
+        '#markup'=>'<div id="customer-region">
+                        <div class="region-flow"><a href="javascript:void(0)">Where do you reside ?</a></div>
+                     </div>',
+    );     
+    $form['content-region']=array(
+    
+        '#type'=>'item',
+        '#prefix'=>'<div id="region-details">',
+        
+    );
+   
+   $form['region']['top_cities']=array(
+        '#type'=>'item',
+        '#markup'=>'<div class="top_cities">
+                    </div>',
+   );
+   
+   $quote_region = !empty($form_state['values']['select_region']) ? $form_state['values']['select_region'] : "";
+   $form['region']['select_region']=array(
+        '#type'=>'select',
+        '#options'=>$cities,
+        '#default_value' => $quote_region,
+        //'#required' => TRUE,
+   );
+    $form['end-region']=array(
+    	'#markup'=>'<div class="top_citiescignaTTK"><p>CignaTTK currently does not serve cities that do not appear here</p></div>',
+        '#type'=>'item',
+        '#suffix'=>'<div class="region-done"><a href="javascript:void(0)">DONE</a></div></div>',    
+    );
+    $form['user_sum_insured']=array(
+        '#type'=>'item',
+        '#markup'=>'<div id="customer-si">
+                        <div class="si-flow"><a href="javascript:void(0)">What cover are you looking for ?</a></div>
+                     </div>',
+    );  
+    $form['content-si']=array(
+    
+        '#type'=>'item',
+        '#prefix'=>'<div id="si-details">',
+        
+    );
+    
+    $form['hd_check']=array(
+        '#type'=>'checkboxes',
+        '#options'=>array(
+		
+            1=>'<input type="checkbox" id="c1" name="cc" />
+              <label for="c1">I am already insured but need addtional coverage</label> ',
+        ),
+        '#attributes'=>array(
+            'class'=>array('c1'),
+        ),
+        '#default_value'=>isset($default) ? array(1) : '', 
+    );
+	
+    $form['hd_current_cover']=array(
+        '#type'=>'select',
+        '#title'=>'What is the value of your current cover?',
+        '#options'=>array(
+            0=>'Select',
+            1=>1,
+            2=>2,
+        ),
+    );
+    
+     $form['hd_currnt_end']=array(
+     
+	 
+	 
+        '#markup'=>'<div id="toptestget"><h2>Choose a Sum insured appropriate for you</h2><p>Move the slider to the amount you wish to insure.</p></div><div id="works">How it works: Having an existing cover, called the High Deductible, proportaionally
+                    reduces the premium you need to pay for the additional cover you get from CignaTTK.
+                    At the time of a claim, you first use up your current cover and CignaTTK will
+                    cover your for hospital expenses upto the additional cover you buy)</div>',
+        
+    );
+    $form['range_slider']=array(
+        '#type'=>'item',
+        '#markup'=>'<div id="amount_custom" style="display:none; border: 0; color: #f6931f; font-weight: bold;"></div>
+                    <div id="slider_custom" style="width:300px;"></div>
+                    <div class="steps" style="border: 1px solid transparent; 
+                                              width: 300px;
+                                              position: relative;
+                                              height: 30px;"></div>',
+        );
+    /*
+    $form['range_slider']=array(
+        '#type'=>'item',
+        '#markup'=>'<p>
+                        <label for="amount">Price range:</label>
+                        <div id="amount" style="border: 0; color: #f6931f; font-weight: bold;"></div>
+                    </p>
+                    <div id="slider-quote"></div>',
+    );*/
+    $form['si_value']= array(
+        '#type'=>'hidden',
+        '#attributes'=>array(
+            'class'=>'si_hidden_value',
+        ),
+    ); 
+    $form['premium']=array(
+            '#type'=>'markup',
+            '#prefix'=>'<div id="approx-premium">',
+            '#suffix'=>'</div>',
+    );
+	$form['tipdetails']=array(
+            '#prefix'=>'<div class="tipdetails">',
+            '#markup'=>'<div class="tips">
+                          <div class="text">TIP  |</div>
+                          <div class="ptext">Most people have chosen a sum insured of Rs.5 Lakh 
+                            in this category</div>
+                      	</div>',
+            '#suffix'=>'</div>',
+    );
+    $form['ajax_loading']= array(
+        '#markup'=>'<div id="LoadingImage" style="display: none">Loading......Please Wait</div>',
+    );
+    $form['end-si']=array(
+    
+        '#type'=>'item',
+        '#markup'=>'<div class="calculatedonebtn"><div class="calculate"><a href="javascript:void(0)">Calculate Premium</a></div>&nbsp;<div class="si-done"><a href="javascript:void(0)">DONE</a></div></div>',
+        '#suffix'=>'</div>',
+        
+    );
+   	$form['action'] = array(
+		'#prefix'=>'<div class="quote-submit">',
+		'#suffix'=>'</div>',	
+	);
+	$form['action']['sort'] = array(
+		'#type' => 'submit',
+		'#value' => t('Show me the plans'),
+		'#attributes' => array('class' => array('admin-submit')),
+	);
+    return $form;
+    
+}
+function common_quotation_start_form_submit($form,&$form_state){
+    
+    global $user;
+    
+    ctools_include('ajax');
+    ctools_add_js('ajax-responder');
+    $commands[] = ctools_ajax_command_redirect('plans/calculate-premium');
+    print ajax_render($commands);
+    exit;
+    
+}
+
+function  suggestion_first_details($form,&$form_state){
+    
+    
+    global $user;
+    if(isset($_GET)){
+        
+        $_SESSION['clicked']=$_GET['clicked'];
+        
+    }
+    if(isset($_SESSION['guestuser'])){
+        $guestuser = $_SESSION['guestuser'];
+    }
+    unset($_SESSION['show_all_plans']);
+    ctools_include('ajax');
+    ctools_include('modal');
+    ctools_modal_add_js();
+      
+    $links = ctools_modal_text_button(t('Proceed'), 'common/nojs/details', t('Proceed to Next Step'),'ctools-use-modal');
+    
+    //drupal_add_js(drupal_get_path('module','get_quote').'/js/quote-lead-details.js');
+    
+    
+    $form['mandantory']=array(
+            '#type'=>'item',
+            '#markup'=>'<div id="quote-error"></div>',
+    );
+    
+    $form['headline']=array(
+        '#type'=>'item',
+        '#markup'=>'<h1 class="entry-title"> Get additional cover with CignaTTK high deductible<br/>plans in <b>4 simple steps.</b></h1>',
+        '#markup'=>'  <div class="basicdetails">
+          <h1>View the plans and premiums best suited to you <br />
+            in <strong>4 straight forward steps</strong>.</h1>
+          <div class="step">Why do I need to go through these steps?</div>
+        </div><br/>
+                    <p>A FEW DETAILS ABOUT YOU</p>',
+    );
+
+    if(isset($_SESSION['user_details'])){
+        
+        $values=$_SESSION['user_details'];
+    }   
+	$form['formdata_start']=array(
+				'#prefix'=>'<div class="leftform">',
+	  );
+	
+    if($user->uid){
+      $form['first_name'] = array( 
+            '#title' => t('Your Name'),
+            '#type' => 'textfield',
+            '#size'=>20,
+            '#default_value' => isset($user->data['first_name']) ? $user->data['first_name'] : "",
+            '#attributes'=>array(
+                'placeholder'=>t('First Name'),
+                'id'=>array('quote-first-name'),
+                ),
+            '#required'=>true,
+        );
+      
+        $form['last_name'] = array(
+            '#type' => 'textfield',
+            '#size'=>20,
+            '#attributes'=>array(
+                'placeholder'=>t('Last Name'),
+                'id'=>array('quote-last-name'),
+                ),
+            '#default_value'=> isset($user->data['last_name']) ? $user->data['last_name'] : "",
+            '#required'=>true,
+        );
+       
+        $form['phone_number'] = array(
+            '#title' => t('Your Mobile No.<br/>'),
+            '#type' => 'textfield',
+            '#size'=>30,
+            '#attributes'=>array(
+                'placeholder'=>t('Mobile Number'),
+                'id'=>array('quote-phone-number'),
+                ),
+            '#default_value'=> isset($user->data['mobile_no']) ? $user->data['mobile_no'] : "",//isset($values) ? $values["phone"] : '',
+            '#required'=>true,
+            '#maxlength'=>10,
+        );
+        $form['email'] = array(
+            '#title' => t('Your Email ID'),
+            '#type' => 'textfield',
+            '#default_value' => isset($user->mail) ? $user->mail : "",
+            '#size'=>30,
+            '#required'=>true,
+        );
+		
+	
+    }else{
+        
+        $form['first_name'] = array( 
+            '#title' => t('Your Name'),
+            '#type' => 'textfield',
+            '#size'=>20,
+            '#attributes'=>array(
+                'placeholder'=>t('First Name'),
+                'id'=>array('quote-first-name'),
+                ),
+            '#default_value'=>isset($values["fname"]) ? $values["fname"] : (isset($guestuser->data['first_name']) ? $guestuser->data['first_name'] : ''),
+	        '#required'=>true,
+        );
+      
+        $form['last_name'] = array(
+            '#type' => 'textfield',
+            '#size'=>20,
+            '#attributes'=>array(
+                'placeholder'=>t('Last Name'),
+                'id'=>array('quote-last-name'),
+                ),
+            '#default_value'=>isset($values["lname"]) ? $values["lname"] : (isset($guestuser->data['last_name']) ? $guestuser->data['last_name'] : ''),
+            //'#required'=>true,
+        );
+       
+        $form['phone_number'] = array(
+            '#title' => t('Your Mobile No.<br/>'),
+            '#type' => 'textfield',
+            '#size'=>30,
+            '#attributes'=>array(
+                'placeholder'=>t('Mobile Number'),
+                'id'=>array('quote-phone-number'),
+                ),
+            '#default_value'=>isset($values["phone"]) ? $values["phone"] :(isset($guestuser->data['mobile_no']) ? $guestuser->data['mobile_no'] : ''),
+            '#required'=>true,
+            '#maxlength'=>10,
+        );  
+        $form['email'] = array(
+            '#title' => t('Your Email ID'),
+            '#type' => 'textfield',
+            '#size'=>30,
+            '#required'=>true,
+            '#default_value'=>isset($values["email_id"]) ? $values["email_id"] : (isset($guestuser->mail) ? $guestuser->mail : ''),
+        );
+		
+    }
+  $form['ajax_result']=array(
+        '#type' => 'markup',
+        '#prefix'=>'<div id="quote_hidden">',
+        '#suffix'=>'</div>'
+  
+  );
+  $form['popup']=array(
+    '#markup'=>'<div id="proceed_popup">'.$links.'</div>'
+   );
+   $form['progress']=array(
+    '#markup'=>'<div id="progress-bar"></div>'
+   );
+  $form['submit'] = array(
+                '#type' => 'submit',
+                '#value' => t('Submit'),
+                '#ajax'=>array(
+                    'callback'=>'ajax_lead_proceed',
+                    'wrapper'=>'quote_hidden',
+                    'progress'=> array('type'=> 'throbber', 'message' => t('Please wait...')),
+                ),
+  );
+  
+  $form['formdata_end']=array(
+				'#suffix'=>'</div>',
+  );
+      
+  if(!$user->uid){
+    $form['quote_fb_title'] =array(
+        '#markup'=>'<div class="rightconnect"><p>CONNECT USING FACEBOOK</p></div>',       
+    );
+  }
+
+  return $form;
+  
+}
+
+    
+function ajax_lead_proceed($form,&$form_state){
+    
+    $commands = array();
+    $commands[] = ajax_command_invoke('#edit-submit', 'hide');
+    $commands[] = ajax_command_invoke('#proceed_popup', 'show');
+	return array('#type' => 'ajax', '#commands' => $commands);
+}
+function suggestion_first_details_submit($form,&$form_state){
+    
+    global $user,$sforce;
+    if(!user_is_logged_in()){
+        $user_exist = user_load_by_name($form_state['values']['email']);
+        $_SESSION['guestuser'] = user_load_by_mail($form_state['values']['email']);
+        if(!$user_exist){
+            $account = new StdClass();
+            $account->is_new = TRUE;
+            $account->status = FALSE;
+            $account->name = $form_state['values']['email'];
+            $account->pass = user_hash_password(uniqid());
+            $account->mail = $form_state['values']['email'];
+            $account->init = $form_state['values']['email'];
+            $account->roles = array( '2' => 'authenticated user', '5' => 'customer');
+            
+            $user = user_save($account);
+            $account = user_load($user->uid);
+            $edit = (array) $account;
+            $edit=array(
+                'data'=>array(
+                    'first_name'=>$form_state['values']['first_name'],
+                    'last_name'=>$form_state['values']['last_name'],
+                    'mobile_no'=> $form_state['values']['phone_number'],
+                ),
+            );
+            $user = user_save($account,$edit);
+            $_SESSION['guestuser'] = $user;
+        }else{
+            $user_data = user_load_by_mail($form_state['values']['email']);
+            $account1 = user_load($user_data->uid);
+            $edit = (array) $account1;
+            $edit=array(
+                'data'=>array(
+                    'first_name'=>$form_state['values']['first_name'],
+                    'last_name'=>$form_state['values']['last_name'],
+                    'mobile_no'=> $form_state['values']['phone_number'],
+                ),
+            );
+            $user = user_save($account1,$edit);
+            $_SESSION['guestuser'] = $user;
+            
+        }
+    }else{
+        $_SESSION['mobile_no'] = $form_state['values']['phone_number'];
+    }
+        
+        $leadArray = array(
+            'FirstName' => $form_state['values']['first_name'] ,
+            'LastName' => $form_state['values']['last_name'],
+            'Email' => $form_state['values']['email'],
+            'MobilePhone' => $form_state['values']['phone_number'],
+            'cgn_Lead_Fallout_Stage__c' => 'Lead Form',
+        );
+       $sf_result = $sforce->mapSforceLead($leadArray,'Lead');
+        
+       if(sfdcErrors($sf_result,'Lead')){
+            $result = db_insert('user_salesforce')
+                        ->fields(array(
+                            'uid' => $user->uid,
+                            'sf_id' => $sf_result->id,
+                       ))
+                       ->execute();
+       }
+        
+    return true;
+}
+

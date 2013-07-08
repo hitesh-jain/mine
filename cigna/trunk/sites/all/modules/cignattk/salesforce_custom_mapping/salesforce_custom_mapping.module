@@ -1,0 +1,52 @@
+<?php
+/*
+*
+*/
+function salesforce_custom_mapping_init(){
+    if(libraries_get_path("salesforce")){
+	require_once DRUPAL_ROOT . '/'.libraries_get_path("salesforce").'/sforce.php';
+	
+	global $sforce;
+	$sforce = new Sforce();
+  }
+  else{
+	drupal_set_message(t('Library salesforce does not exists.'), 'error');
+  }
+}
+function salesforce_custom_mapping_user_insert(&$edit, $account, $category){
+    global $user;
+    global $sforce;
+    
+    //print '<pre>';
+    //print_r($account);die;
+    $account = user_load($account->uid); // Loading account
+    $edit=array(
+            'data'=>array(
+                'first_name'=>$_POST['field_first_name'],
+                'last_name'=>$_POST['field_last_name'],
+                'mobile_no'=> $_POST['field_mobile'],
+            ),
+        );
+    $user = user_save($account, $edit);
+    
+    if($_POST['form_id'] == 'user_register_form'){
+        $leadArray = array(
+            'FirstName' => $_POST['field_first_name'] ,
+            'LastName' => $_POST['field_last_name'],
+            'Email' => $_POST['mail'],
+            'MobilePhone' => $_POST['field_mobile'],
+            'cgn_Lead_Fallout_Stage__c' => 'Lead Form',
+        );
+        $sf_result = $sforce->mapSforceLead($leadArray,'Lead');
+        if(sfdcErrors($sf_result,'Lead')){
+            db_insert('user_salesforce')
+                    ->fields(array(
+                        'uid' => $account->uid,
+                        'sf_id' => $sf_result->id 
+                    ))
+                    ->execute();
+            return true;
+        }
+    }
+}
+?>

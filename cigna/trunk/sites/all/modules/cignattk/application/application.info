@@ -1,0 +1,7 @@
+name = Policy Applications
+description = This module for gettting all infomation for policy holder.
+
+version = "7.x-0.1"
+core = 7.x
+package = CHSI
+project = CignaTTK

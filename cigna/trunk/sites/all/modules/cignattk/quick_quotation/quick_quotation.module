@@ -1,0 +1,2507 @@
+<?php
+
+/**
+ * 
+ * Implements hook_init()
+ * 
+ */
+function quick_quotation_init(){
+            
+     
+    drupal_session_start();
+    if(libraries_get_path("webservice")){
+        
+	       require_once DRUPAL_ROOT . '/'.libraries_get_path("webservice").'/productConfigurator.php';
+	       global $product_conf;
+	       $product_conf = new productConfigurator();
+  }
+  else{
+	drupal_set_message(t('Library webservice does not exists.'), 'error');
+  }
+   
+}
+function quick_quotation_menu(){
+    
+    $items=array();
+     $items['quick_quotation/%ctools_js/page'] = array(
+      'title' => 'Quick Quotation',
+      'page callback' => 'quick_quotation_ajax_details_form',
+      'page arguments' => array(1),
+      'access callback' => TRUE,
+      'type' => MENU_CALLBACK,
+    );
+    $items['quick-quote'] = array(
+      'page callback'=>'quick_quote_page',
+      'access callback' => TRUE,
+      'type' => MENU_CALLBACK,
+    );
+    $items['quotation/%ctools_js/modify'] = array(
+      'title' => 'Quick Quotation',
+      'page callback' => 'quotation_modify_ajax_details_form',
+      'page arguments' => array(1),
+      'access callback' => TRUE,
+      'type' => MENU_CALLBACK,
+    );
+    $items['quick_quote/ajax/premium'] = array(
+      'page callback' => 'quick_quote_ajax_premium',
+      'access callback' => TRUE,
+      'type' => MENU_CALLBACK,
+    );
+    $items['quick_quote/modify/ajax'] = array(
+      'page callback' => 'quick_quote_modify_ajax',
+      'access callback' => TRUE,
+      'type' => MENU_CALLBACK,
+    );
+     $items['plans/compare'] = array(
+      'page callback' => '_quick_quote_plans_compare',
+      'access callback' => TRUE,
+      'type' => MENU_CALLBACK,
+    );
+     $items['quick_quotation/ajax/compare'] = array(
+      'page callback' => '_quick_quote_ajax_compare',
+      'access callback' => TRUE,
+      'type' => MENU_CALLBACK,
+    );
+    return $items;
+    
+}
+function _quick_quote_plans_compare(){
+    
+    
+    $planids=$_SESSION['compare_value'];
+    
+    $query=db_select('uc_attributes','a')
+            ->fields('a')
+            ->condition('name',array('ADD-ONS','KEY FEATURES'),'IN')
+            ->execute();
+    
+    $output='';
+    
+    foreach($query as $result){
+            
+        $output.='<strong><div>'.$result->name.'</div></strong>';
+            
+        $options=db_select('uc_attribute_options','o')
+                ->fields('o')
+                ->condition('aid',$result->aid)
+                ->execute()->fetchAll();
+            
+            
+        foreach($options as $option){
+            
+                $output.='<div>'.wordwrap($option->name,70,'<br/>').'</div>';
+                foreach($planids as $id){
+                                    
+                    $result=db_select('uc_product_options','p')
+                            ->fields('p')
+                            ->condition('nid',$id)
+                            ->condition('oid',$option->oid)
+                            ->execute()->fetchObject();
+                            
+            
+                   if(isset($result) && !empty($result)){
+                    
+                         $output.='<div>Available</div>';
+                   }else{
+                        $output.='<div>NA</div>';
+                   }        
+                }
+                $output.='<hr/>';
+        }     
+        $output.='<br/>';
+    }
+    return $output;
+    
+    
+}
+function _quick_quote_ajax_compare(){
+    
+    
+    $values=$_POST;
+    
+    if($values['checked']){
+        
+        $_SESSION['compare_value'][$values['planid']]=$values['planid'];    
+    }
+    else if(empty($values['checked'])){
+        
+        unset($_SESSION['compare_value'][$values['planid']]);
+    }
+    
+}
+function quick_quote_modify_ajax(){
+    
+    $values=$_POST;
+    
+    global $user,$product_conf,$theme;
+    
+    if(empty($user->uid)){
+        
+        if(isset($_SESSION['guestuser'])){
+            $guestuser = $_SESSION['guestuser'];
+        }
+    }else{
+        $guestuser = $user;
+    }
+    //dpr($values);exit;
+    
+    $month=$values['month_val'];
+    $day=$values['day_val'];
+    $year=$values['year_val'];
+    
+    $location=location_details($values['location_val']);
+    if(!empty($location)){
+        $location_value=$location['city_name'];
+        $zone_value=strtoupper($location['zone']);
+    }
+    
+    $dob=strtotime("$day-$month-$year");
+    $month_format=date('m',$dob);
+    
+    if(($values['adult_val'] + $values['child_val'])==1){
+            $type=strtoupper('INDIVIDUAL');
+    }else{
+            $type=strtoupper('FAMILYFLOATER');
+    }
+    
+    $sum_value=$values['sumInsured']*100000;
+    
+    $results=_plan_compute_value($sum_value,$type);
+    
+    //dpr($results);exit;
+    $display_flag=1;
+    if(!empty($results)){
+        
+        foreach($results as $result){
+            
+            $productId=!empty($result->sub_plan_id) ? $result->sub_plan_id : '';
+            $productPlanOptionCd=!empty($result->field_plan_option_cd_value) ? $result->field_plan_option_cd_value : '';
+            $policyType=!empty($result->field_plan_option_cover_type_value) ? $result->field_plan_option_cover_type_value : '';
+            
+            //$parentProductId=!empty($result->sub_plan_parent_value) ? $result->sub_plan_parent_value : '';
+            $parentProductId=!empty($result->field_sub_plan_parent_product_id_value) ? $result->field_sub_plan_parent_product_id_value : '';
+            $parentId=!empty($result->plan_id) ? $result->plan_id : '';
+            
+            
+            $productFamilyId=!empty($result->tax_term_name) ? $result->tax_term_name : '';
+            $parentProductVersion=!empty($result->field_version_value) ? $result->field_version_value : '';
+            
+            $agencyId=!empty($result->agencyId) ? $result->agencyId : '';
+            $channelId=!empty($result->channelId) ? $result->channelId : '';
+            $agentId=!empty($result->agentId) ? $result->agentId : '';
+            $campainId=!empty($result->campainId) ? $result->campainId : '';
+            
+            if($parentId){
+                
+                $terms=db_select('field_data_field_plan_policy_term','p')
+                        ->fields('p',array('field_plan_policy_term_value'))
+                        ->condition('p.entity_id',$parentId)
+                        ->orderBy('field_plan_policy_term_value','ASC')
+                        ->execute()->fetchField();
+                if($terms){
+                    $term_value=$terms;
+                }        
+            }
+            
+            
+            if(!empty($values)){
+        
+                    $insuredDob="$day/$month_format/$year";
+                    $sumInsured=$values['sumInsured']*100000;
+                    $gender=!empty($values['gender_value']) ? 'FEMALE' : 'MALE';
+        
+            }
+            $quotationDt=date('d/m/Y');  // Passing current system date
+    
+            $type='FINAL';
+           
+        /* Collecting People Details Start */
+            $people_data=array();
+            
+            if($values['people_details']['adults']){
+                
+                $people_details=$values['people_details']['adults'];
+                
+                foreach($people_details as $key=>$people_detail){
+                    
+                    
+                    $gender=empty($people_detail['gender'])  ?  'MALE' : 'FEMALE';
+                    
+                    if(!empty($people_detail['tobacco'])){
+                        
+                        $tobacco=_plan_consumption('tobacco',$people_detail['tobacco_consumption']);
+                    }else{
+                        $tobacco='NO';    
+                    }
+                    
+                    if(!empty($people_detail['alcohol'])){
+                        
+                        $alcohol=_plan_consumption('alcohol',$people_detail['alcohol_consumption']);
+                    }else{
+                        $alcohol='NO';   
+                    }
+                    
+                    if(!empty($people_detail['cigarette'])){
+                        
+                        $cigarette=_plan_consumption('cigarette',$people_detail['cigarette_consumption']);
+                    }else{
+                        $cigarette='NO';    
+                    }
+                    
+                    $people_month=$people_detail['month'];
+                    $people_day=$people_detail['day'];
+                    $people_year=$people_detail['year'];
+                    
+                    $relation=_plan_relation_value('adult',$key);
+                    
+                    $people_dob=strtotime("$people_day-$people_month-$people_year");
+                    $people_month_format=date('m',$people_dob);
+                    
+                    $people_insuredDob="$people_day/$people_month_format/$people_year";
+                    
+                    $people_data[]=array(
+                                            
+                        'chewTobaccoCd'=>$tobacco,
+            			'cityCd'=>!empty($location_value) ? $location_value : '',
+                        'consumeAlcoholCd'=>$alcohol,
+                        'discount'=>'',
+            			'dob'=>!empty($people_insuredDob) ? $people_insuredDob : '',
+                        'emailAddress'=>!empty($values['email_val']) ? $values['email_val'] : '',
+                        'extraPremium'=>'',
+            			'genderCd'=>$gender,
+            			'insuredTypeCd'=>'PRIMARY',
+                        'issueAge'=>'',
+                        'mobileNum'=>!empty($values['phone_val']) ? $values['phone_val'] : '',
+                        'modalPremium'=>'',
+            			'relationCd'=>isset($relation) && !empty($relation) ? $relation : '',
+                        'quotationProductInsuredBenefitDOList'=>array(
+                            'amount'=>'',
+                            'benefitId'=>'',
+                            'benefitTypeCd'=>'',
+                            'productId'=>'',
+                        ),
+                        'smokerStatusCd'=>$cigarette,
+                        'zoneCd'=>!empty($zone_value) ? $zone_value : 'ZONE1',
+                    );   
+                }
+            }
+            if($values['people_details']['childs']){
+                
+                $people_ch_details=$values['people_details']['childs'];
+                
+                foreach($people_ch_details as $ch_key=>$people_detail){
+                   
+                    if(!empty($people_detail['tobacco'])){
+                        
+                        $tobacco=_plan_consumption('tobacco',$people_detail['tobacco_consumption']);
+                    }else{
+                        $tobacco='NO';    
+                    }
+                    
+                    if(!empty($people_detail['alcohol'])){
+                        
+                        $alcohol=_plan_consumption('alcohol',$people_detail['alcohol_consumption']);
+                    }else{
+                        $alcohol='NO';   
+                    }
+                    
+                    if(!empty($people_detail['cigarette'])){
+                        
+                        $cigarette=_plan_consumption('cigarette',$people_detail['cigarette_consumption']);
+                    }else{
+                        $cigarette='NO';    
+                    }
+                    
+                    $gender=empty($people_detail['gender'])  ?  'MALE' : 'FEMALE';
+                    
+                    $people_month=$people_detail['month'];
+                    $people_day=$people_detail['day'];
+                    $people_year=$people_detail['year'];  
+                    
+                    $people_dob=strtotime("$people_day-$people_month-$people_year"); 
+                    $people_month_format=date('m',$people_dob);
+                    
+                    $people_insuredDob="$people_day/$people_month_format/$people_year";
+                    
+                    $ch_relation=_plan_relation_value('child',$ch_key);
+                    
+                    $people_data[]=array(
+                                            
+                        'chewTobaccoCd'=>$tobacco,
+            			'cityCd'=>!empty($location_value) ? $location_value : '',
+                        'consumeAlcoholCd'=>$alcohol,
+                        'discount'=>'',
+            			'dob'=>!empty($people_insuredDob) ? $people_insuredDob : '',
+                        'emailAddress'=>!empty($values['email_val']) ? $values['email_val'] : '',
+                        'extraPremium'=>'',
+            			'genderCd'=>$gender,
+            			'insuredTypeCd'=>'PRIMARY',
+                        'issueAge'=>'',
+                        'mobileNum'=>!empty($values['phone_val']) ? $values['phone_val'] : '',
+                        'modalPremium'=>'',
+            			'relationCd'=>isset($ch_relation) && !empty($ch_relation) ? $ch_relation : '',
+                        'quotationProductInsuredBenefitDOList'=>array(
+                            'amount'=>'',
+                            'benefitId'=>'',
+                            'benefitTypeCd'=>'',
+                            'productId'=>'',
+                        ),
+                        'smokerStatusCd'=>$cigarette,
+                        'zoneCd'=>!empty($zone_value) ? $zone_value : 'ZONE1',
+                    );   
+                }
+            }
+            /* Collecting People Details Ends */
+            
+            /* Request Data for webservice*/
+            $quote_details=array(
+                'WSQuotationListIO'=>array(
+                    'listofquotationTO'=>array(
+                        'quotationProductDOList'=>array(
+                            'basePremium'=>'',
+                            'discount'=>'',
+                            'extraPremium'=>'',
+                            'productId'=>$productId,
+        					'productPlanOptionCd'=>$productPlanOptionCd,
+        					'productTypeCd'=>'SUBPLAN',
+                            'productVersion'=>1,
+        					'sumInsured'=>$sumInsured,
+                            'zoneCd'=>'',
+                            'quotationProductInsuredDOList'=>$people_data,
+                            
+                            'quotationProductAddOnDOList'=>array(
+                            
+                                'basePremium'=>'',
+                                'discount'=>'',
+                                'extraPremium'=>'',
+        						'productId'=>'',
+        						'productPlanOptionCd'=>'',
+                                'sumInsured'=>'',
+                            ),
+                            'quotationProductBenefitDOList'=>array(
+                                'amount'=>'',
+                                'benefitId'=>'',
+                                'benefitTypeCd'=>'',
+                                'productId'=>'',
+                            ),
+                            'quotationProductChargeDOList'=>array(
+                                'chargeAmount'=>'',
+                                'chargeClassCd'=>'',
+                                'chargePercentage'=>'',
+                            ),
+                        ),
+                        'agentId'=>$agentId,
+                        'campaignCd'=>$campainId,
+        				'channelId'=>$channelId,
+        				'noOfAdults'=>$values['adult_val'],
+        				'noOfKids'=>$values['child_val'],
+        				'parentProductId'=>$parentProductId,
+                        'parentProductVersion'=>$parentProductVersion,
+                        'policyType'=>$policyType,
+                        'productFamilyId'=>$productFamilyId,
+                        'productId'=>$productId,
+                        'productPlanOptionCd'=>$productPlanOptionCd,
+                        'quotationDt'=>$quotationDt, 			
+        				'quoteTypeCd'=>$type,
+        				'saveFl'=>'No',
+        				'tenure'=>$term_value,
+                    )
+                )
+            );
+            
+            try{
+                $response_service=$product_conf->getQuote('compute',$quote_details);
+            }catch(Exception $e){
+                return 'Service Not available';
+            }
+           
+            if($response_service->return->listofquotationTO->totPremium){
+                
+                if($display_flag){
+                    
+                    $output='<div class="premium1">
+                  <h4>Approximate
+                    Premium</h4>
+                  <p>FOR '.$values['sumInsured'].' LAKHS 
+                    SUM INSURED</p>
+                    </div>';
+                
+                }
+                $display_flag=0;
+                $output.='<div class="premium2"> 
+                    <img src="'.url(drupal_get_path('theme',$theme)).'/images/rupes_sing.png" alt=""/><span class="price">'.number_format($response_service->return->listofquotationTO->totPremium).'</span>
+                  <div class="goldplan">';
+                  
+                if($parentId){
+                    
+                    $ws_shortname=db_select('field_data_field_ws_plan_short_name','ws')
+                                ->fields('ws',array('field_ws_plan_short_name_value'))
+                                ->condition('ws.entity_id',$parentId)
+                                ->execute()->fetchField();
+                                           
+                    $output.='<span><b>'.isset($ws_shortname) ? $ws_shortname : ''.'</b></span>';                               
+                }
+                $output.='</div></div>';   
+            }else if($response_service->return->errorList->errDescription){
+                $output.='<div>Error : '.$response_service->return->errorList->errDescription.'</div>';
+            }
+            $_SESSION['modified_return_quote_data'][$parentId]=$response_service;
+        }
+    }    
+    
+    /*
+    if(isset($response_service) && !empty($response_service)){
+            
+        $_SESSION['modified_quote']=$response_service;
+        echo 'Approx Premium<br>';
+        if($response_service->return->listofquotationTO->totPremium)
+        echo ' Rs '.$response_service->return->listofquotationTO->totPremium.'<br/>';
+    }else{
+        echo 'Service Unavailable.Please Try Again after some time.'.'<br/>';
+    }*/
+    
+    echo $output;
+    exit;
+    
+}
+function quick_quote_ajax_premium(){
+    
+     $values=$_POST;
+     
+    // dpr($values);exit;
+    // dpr($_SESSION);
+    
+    global $user,$product_conf,$base_url,$sforce,$theme;
+    
+    if(empty($user->uid)){
+        
+        if(isset($_SESSION['guestuser'])){
+            $guestuser = $_SESSION['guestuser'];
+        }
+    }else{
+        $guestuser = $user;
+    }
+    
+    $ssid=session_id();
+     
+    $location=location_details($values['location_val']);
+     
+    if(!empty($location)){
+        $location_value=$location['city_name'];
+        $zone_value=strtoupper($location['zone']);
+    }
+   
+    $month=$values['month_val'];
+    $day=$values['day_val'];
+    $year=$values['year_val'];
+    
+    $dob=strtotime("$day-$month-$year");
+    
+    $month_format=date('m',$dob);
+
+    if(($values['adult_val'] + $values['child_val'])==1){
+            $type=strtoupper('INDIVIDUAL');
+    }else{
+            $type=strtoupper('FAMILYFLOATER');
+    }
+    
+    $sum_value=$values['sumInsured']*100000;
+    //dpr($sum_value);exit;
+    $results=_plan_compute_value($sum_value,$type);
+    //dpr($results);exit;
+    $display_flag=1;
+  
+    if(!empty($results)){
+        
+        //unset($_SESSION['quick_quote']);
+        //unset($_SESSION['return_quote']);
+       // unset($_SESSION['people_details']);
+       
+        unset($_SESSION['return_quote_data']);
+        unset($_SESSION['quick_quote_data']);
+        
+        foreach($results as $result){
+            
+            $productId=!empty($result->sub_plan_id) ? $result->sub_plan_id : '';
+            $productPlanOptionCd=!empty($result->field_plan_option_cd_value) ? $result->field_plan_option_cd_value : '';
+            $policyType=!empty($result->field_plan_option_cover_type_value) ? $result->field_plan_option_cover_type_value : '';
+            
+            //$parentProductId=!empty($result->sub_plan_parent_value) ? $result->sub_plan_parent_value : '';
+            $parentProductId=!empty($result->field_sub_plan_parent_product_id_value) ? $result->field_sub_plan_parent_product_id_value : '';
+            $parentId=!empty($result->plan_id) ? $result->plan_id : '';
+            
+            $productFamilyId=!empty($result->tax_term_name) ? $result->tax_term_name : '';
+            $parentProductVersion=!empty($result->field_version_value) ? $result->field_version_value : '';
+            
+            $agencyId=!empty($result->agencyId) ? $result->agencyId : '';
+            $channelId=!empty($result->channelId) ? $result->channelId : '';
+            $agentId=!empty($result->agentId) ? $result->agentId : '';
+            $campainId=!empty($result->campainId) ? $result->campainId : '';   
+            
+            if($parentId){
+                
+                $terms=db_select('field_data_field_plan_policy_term','p')
+                        ->fields('p',array('field_plan_policy_term_value'))
+                        ->condition('p.entity_id',$parentId)
+                        ->orderBy('field_plan_policy_term_value','ASC')
+                        ->execute()->fetchField();
+                if($terms){
+                    $term_value=$terms;
+                }        
+            }
+            if(!empty($values)){
+        
+                $insuredDob="$day/$month_format/$year";
+                $sumInsured=$values['sumInsured']*100000;
+                $gender=!empty($values['gender_value']) ? 'FEMALE' : 'MALE';
+                
+            }
+            $quotationDt=date('d/m/Y');  // Passing current system date
+            
+            // Quote Request Object for integration web service for Quotation
+                
+                if(!isset($values['quick_quote']) && empty($values['quick_quote'])){
+                    
+                    $type='FINAL';
+                    $people_data=array();
+                    
+                    if($values['people_details']['adults']){
+                        
+                        $people_details=$values['people_details']['adults'];
+                        
+                        foreach($people_details as $key=>$people_detail){
+                            
+                            $gender=empty($people_detail['gender'])  ?  'MALE' : 'FEMALE';
+                            
+                            if(!empty($people_detail['tobacco'])){
+                                
+                                $tobacco=_plan_consumption('tobacco',$people_detail['tobacco_consumption']);
+                            }else{
+                                $tobacco='NO';    
+                            }
+                            
+                            if(!empty($people_detail['alcohol'])){
+                                
+                                $alcohol=_plan_consumption('alcohol',$people_detail['alcohol_consumption']);
+                            }else{
+                                
+                                $alcohol='NO';   
+                            }
+                            
+                            if(!empty($people_detail['cigarette'])){
+                                
+                                $cigarette=_plan_consumption('cigarette',$people_detail['cigarette_consumption']);
+                            }else{
+                                $cigarette='NO';    
+                            }
+                            
+                            $people_month=$people_detail['month'];
+                            $people_day=$people_detail['day'];
+                            $people_year=$people_detail['year'];
+                            
+                            $relation=_plan_relation_value('adult',$key);
+                            
+                            $people_dob=strtotime("$people_day-$people_month-$people_year");
+                            $people_month_format=date('m',$people_dob);
+                            
+                            $people_insuredDob="$people_day/$people_month_format/$people_year";
+                            
+                            $people_data[]=array(
+                                                    
+                                'chewTobaccoCd'=>$tobacco,
+                    			'cityCd'=>!empty($location_value) ? $location_value : '',
+                                'consumeAlcoholCd'=>$alcohol,
+                                'discount'=>'',
+                    			'dob'=>!empty($people_insuredDob) ? $people_insuredDob : '',
+                                'emailAddress'=>!empty($values['email_val']) ? $values['email_val'] : '',
+                                'extraPremium'=>'',
+                    			'genderCd'=>$gender,
+                    			'insuredTypeCd'=>'PRIMARY',
+                                'issueAge'=>'',
+                                'mobileNum'=>!empty($values['phone_val']) ? $values['phone_val'] : '',
+                                'modalPremium'=>'',
+                    			'relationCd'=>isset($relation) && !empty($relation) ? $relation : '',
+                                'quotationProductInsuredBenefitDOList'=>array(
+                                    'amount'=>'',
+                                    'benefitId'=>'',
+                                    'benefitTypeCd'=>'',
+                                    'productId'=>'',
+                                ),
+                                'smokerStatusCd'=>$cigarette,
+                                'zoneCd'=>!empty($zone_value) ? $zone_value : 'ZONE1',
+                            );   
+                        }
+                    }
+                    if($values['people_details']['childs']){
+                        
+                        $people_ch_details=$values['people_details']['childs'];
+                        
+                        foreach($people_ch_details as $ch_key=>$people_detail){
+                          
+                          if(!empty($people_detail['tobacco'])){
+                                
+                                $tobacco=_plan_consumption('tobacco',$people_detail['tobacco_consumption']);
+                            }else{
+                                $tobacco='NO';    
+                            }
+                            
+                            if(!empty($people_detail['alcohol'])){
+                                
+                                $alcohol=_plan_consumption('alcohol',$people_detail['alcohol_consumption']);
+                            }else{
+                                $alcohol='NO';   
+                            }
+                            
+                            if(!empty($people_detail['cigarette'])){
+                                
+                                $cigarette=_plan_consumption('cigarette',$people_detail['cigarette_consumption']);
+                            }else{
+                                $cigarette='NO';    
+                            }
+                          
+                            $gender=empty($people_detail['gender'])  ?  'MALE' : 'FEMALE';
+                            
+                            $people_month=$people_detail['month'];
+                            $people_day=$people_detail['day'];
+                            $people_year=$people_detail['year'];  
+                            
+                            $people_dob=strtotime("$people_day-$people_month-$people_year"); 
+                            $people_month_format=date('m',$people_dob);
+                            
+                            $people_insuredDob="$people_day/$people_month_format/$people_year";
+                            
+                            $ch_relation=_plan_relation_value('child',$ch_key);
+                            
+                            $people_data[]=array(
+                                                    
+                                'chewTobaccoCd'=>$tobacco,
+                    			'cityCd'=>!empty($location_value) ? $location_value : '',
+                                'consumeAlcoholCd'=>$alcohol,
+                                'discount'=>'',
+                    			'dob'=>!empty($people_insuredDob) ? $people_insuredDob : '',
+                                'emailAddress'=>!empty($values['email_val']) ? $values['email_val'] : '',
+                                'extraPremium'=>'',
+                    			'genderCd'=>$gender,
+                    			'insuredTypeCd'=>'PRIMARY',
+                                'issueAge'=>'',
+                                'mobileNum'=>!empty($values['phone_val']) ? $values['phone_val'] : '',
+                                'modalPremium'=>'',
+                    			'relationCd'=>isset($ch_relation) && !empty($ch_relation) ? $ch_relation : '',
+                                'quotationProductInsuredBenefitDOList'=>array(
+                                    'amount'=>'',
+                                    'benefitId'=>'',
+                                    'benefitTypeCd'=>'',
+                                    'productId'=>'',
+                                ),
+                                'smokerStatusCd'=>$cigarette,
+                                'zoneCd'=>!empty($zone_value) ? $zone_value : 'ZONE1',
+                            );   
+                        }
+                    }
+                }else{
+                        $type='INITIAL';
+                        $people_data=array(
+                                    'chewTobaccoCd'=>'',
+            						'cityCd'=>!empty($location_value) ? $location_value : '',
+                                    'consumeAlcoholCd'=>'',
+                                    'discount'=>'',
+            						'dob'=>!empty($insuredDob) ? $insuredDob : '',
+                                    'emailAddress'=>!empty($values['email_val']) ? $values['email_val'] : '',
+                                    'extraPremium'=>'',
+            						'genderCd'=>!empty($gender) ? $gender : '',
+            						'insuredTypeCd'=>'PRIMARY',
+                                    'issueAge'=>'',
+                                    'mobileNum'=>!empty($values['phone_val']) ? $values['phone_val'] : '',
+                                    'modalPremium'=>'',
+            						'relationCd'=>'SELF',
+                                    'quotationProductInsuredBenefitDOList'=>array(
+                                        'amount'=>'',
+                                        'benefitId'=>'',
+                                        'benefitTypeCd'=>'',
+                                        'productId'=>'',
+                                    ),
+                                    'smokerStatusCd'=>'',
+                                    'zoneCd'=>!empty($zone_value) ? $zone_value : '',
+                        );     
+                }
+
+            $quote_details=array(
+                'WSQuotationListIO'=>array(
+                    'listofquotationTO'=>array(
+                        'quotationProductDOList'=>array(
+                            'basePremium'=>'',
+                            'discount'=>'',
+                            'extraPremium'=>'',
+                            'productId'=>$productId,
+        					'productPlanOptionCd'=>$productPlanOptionCd,
+        					'productTypeCd'=>'SUBPLAN',
+                            'productVersion'=>1,
+        					'sumInsured'=>$sumInsured,
+                            'zoneCd'=>'',
+                            'quotationProductInsuredDOList'=>$people_data,
+                            
+                            'quotationProductAddOnDOList'=>array(
+                            
+                                'basePremium'=>'',
+                                'discount'=>'',
+                                'extraPremium'=>'',
+        						'productId'=>'',
+        						'productPlanOptionCd'=>'',
+                                'sumInsured'=>'',
+                            ),
+                            'quotationProductBenefitDOList'=>array(
+                                'amount'=>'',
+                                'benefitId'=>'',
+                                'benefitTypeCd'=>'',
+                                'productId'=>'',
+                            ),
+                            'quotationProductChargeDOList'=>array(
+                                'chargeAmount'=>'',
+                                'chargeClassCd'=>'',
+                                'chargePercentage'=>'',
+                            ),
+                        ),
+                        'agentId'=>$agentId,
+                        'agencyId'=>$agencyId,
+                        'campaignCd'=>$campainId,
+        				'channelId'=>$channelId,
+        				'noOfAdults'=>$values['adult_val'],
+        				'noOfKids'=>$values['child_val'],
+        				'parentProductId'=>$parentProductId,
+                        'parentProductVersion'=>$parentProductVersion,
+                        'policyType'=>$policyType,
+                        'productFamilyId'=>$productFamilyId,
+                        'productId'=>$productId,
+                        'productPlanOptionCd'=>$productPlanOptionCd,
+                        'quotationDt'=>$quotationDt, 			
+        				'quoteTypeCd'=>$type,
+        				'saveFl'=>'No',
+        				'tenure'=>$term_value,
+                    )
+                )
+            );
+            //dpr($quote_details);exit;
+            
+             try{
+                $response_service=$product_conf->getQuote('compute',$quote_details);
+            }catch(Exception $e){
+                return 'Service Not available';
+            }
+            
+           // dpr($response_service);exit;
+            if($response_service->return->listofquotationTO->totPremium){
+                
+                if($display_flag){
+                    
+                    $output='<div class="premium1">
+                  <h4>Approximate
+                    Premium</h4>
+                  <p>FOR '.$values['sumInsured'].' LAKHS 
+                    SUM INSURED</p>
+                </div>';
+                
+                }
+                $display_flag=0;
+                
+            $output.='<div class="premium2"> 
+                    <img src="'.url(drupal_get_path('theme',$theme)).'/images/rupes_sing.png" alt=""/><span class="price">'.number_format($response_service->return->listofquotationTO->totPremium).'</span>
+                  <div class="goldplan">';
+                  
+                if($parentId){
+                    
+                    $ws_shortname=db_select('field_data_field_ws_plan_short_name','ws')
+                                ->fields('ws',array('field_ws_plan_short_name_value'))
+                                ->condition('ws.entity_id',$parentId)
+                                ->execute()->fetchField();
+                            
+                    $output.='<span><b>'.isset($ws_shortname) ? $ws_shortname : ''.'</b></span>';                               
+                }
+                    if($values['quick_quote']){
+                        
+                            $output.='<a  name="BuyNow" id="BuyNow" href="'.url("quote/suggestion/details").'?clicked=1">Buy Now</a>';        
+                    }else{
+                           // $output.='<a  name="BuyNow" id="BuyNow" href="'.$base_url.'/plans/calculate-premium">Buy Now</a>';
+                    }        
+                    $output.='</div>
+                            </div>';        
+                    
+            }else if($response_service->return->errorList->errDescription){
+                $output.='<div>Error : '.$response_service->return->errorList->errDescription.'</div>';
+            }
+            $_SESSION['return_quote_data'][$parentId]=$response_service;
+            $_SESSION['quick_quote_data'][$parentId]=array(
+                'uid'=> (isset($user->uid) ? $user->uid : $guestuser->uid),
+                'sid'=>$ssid,
+                'no_adults'=>$values['adult_val'],
+                'no_childs'=>$values['child_val'],
+                'region'=>$values['location_val'],
+                'sum_insured'=>$values['sumInsured']*100000,
+                'gender'=>$values['gender_value'],
+                'dob'=>$dob,
+                'hd_option'=>$values['hd_option'],
+                'hd_option_price'=>$values['hd_option_price'],
+                'quote_no'=>'',
+                'created'=>time(),
+                'modify'=>time(),
+                'tenure'=>$term_value,
+                'flag'=>1,
+                'productId'=>$response_service->return->listofquotationTO->quotationProductDOList->productId,
+                'initial_basePremium'=>$response_service->return->listofquotationTO->quotationProductDOList->basePremium,
+                'total_premium'=>$response_service->return->listofquotationTO->totPremium,
+                'planid'=>$parentId,
+            );
+        }
+    }
+     
+    if(!isset($_SESSION['suggest_user_details'])){
+        
+        $_SESSION['user_details']=array(
+    
+                'uid'=>(isset($user->uid) ? $user->uid : $guestuser->uid),
+                'sid'=>$ssid,
+                'gender'=>$values['gender_value'],
+                'dob'=>$dob,
+        );  
+    }
+    echo $output;
+    exit;
+}
+function quick_quote_page(){
+    
+    
+    $output='<div class="title">
+      
+      <div class="lefti">
+        <h3>Add a few details to get an approximate premium</h3>
+      </div>
+      <div class="step">Why do I need to go through these steps?</div>
+    </div>
+    <div class="dataentery"><p>A FEW DETAILS ABOUT YOU</p>';
+    $dpform = drupal_get_form('quick_quote_form');
+    $output.=drupal_render($dpform);
+    
+    $output.='</div>';
+    return $output;
+    
+    
+}
+function quick_quote_form($form,&$form_state){  
+    
+    
+   global $theme;
+   global $user,$pc;
+   global $cities,$adult;
+   
+   
+   $female_checked='';
+   $male_checked='';
+   $checked='';
+   if(isset($_SESSION['guestuser'])){
+        $guestuser  = $_SESSION['guestuser'];
+   }
+   $result=db_select('field_data_field_si_value','s');
+   $result->innerJoin('node','n','n.nid=s.entity_id');
+   $result->innerJoin('field_data_field_sub_plan_option','sub','s.entity_id=sub.field_sub_plan_option_target_id');   
+   $result->innerJoin('field_data_field_related_plan_id ','r','sub.entity_id=r.entity_id');
+   
+   $result->innerJoin('taxonomy_index','i','i.nid=r.field_related_plan_id_target_id');
+   $result->innerJoin('taxonomy_term_data','d','i.tid=d.tid');
+   $result->fields('s',array('field_si_value_value'))
+          ->condition('n.status',1)
+          ->condition('d.name','IPMI')
+          ->orderBy('field_si_value_value')
+          ->distinct();
+          
+   $si_values=$result->execute();
+    
+    foreach($si_values as $value){
+        
+        $si_range[]=(int)$value->field_si_value_value;
+        
+    }
+    sort($si_range);
+    drupal_add_js(array('quick_quotation' => array('si_range_value' => $si_range)), 'setting');
+            
+   if(isset($user->gender)){
+        
+        if($user->gender==2){
+            $male_checked='checked';    
+        }else if($user->gender==1){
+            $female_checked='checked';
+        }
+   }elseif(isset($guestuser->gender)){
+        if($guestuser->gender==2){
+            $male_checked='checked';    
+        }else if($guestuser->gender==1){
+            $female_checked='checked';
+        }
+    
+   }else{
+        $checked='checked';   
+   }
+                    
+    if(isset($user->dob)){
+        
+        if(isset($user->dob['year']) && !empty($user->dob['year'])){
+            $year=(int)($user->dob['year']);
+        }
+        if(isset($user->dob['month']) && !empty($user->dob['month'])){
+            $month=(int)($user->dob['month']);
+        }
+        if(isset($user->dob['day']) && !empty($user->dob['day'])){
+            $day=(int)($user->dob['day']);
+        }
+    }elseif(isset($guestuser->dob)){
+        if(isset($guestuser->dob['year']) && !empty($guestuser->dob['year'])){
+            $year=(int)($guestuser->dob['year']);
+        }
+        if(isset($guestuser->dob['month']) && !empty($guestuser->dob['month'])){
+            $month=(int)($guestuser->dob['month']);
+        }
+        if(isset($guestuser->dob['day']) && !empty($guestuser->dob['day'])){
+            $day=(int)($guestuser->dob['day']);
+        }
+    }else{
+        $year=(int)(date('Y'));
+        $month=(int)(date('n'));
+        $day=(int)(date('j'));
+    }
+   
+    drupal_add_css(drupal_get_path('theme',$theme).'/css/jquery-ui.css');
+    drupal_add_js(drupal_get_path('theme',$theme).'/js/jquery-1.9.1.js');
+    //drupal_add_js(drupal_get_path('theme',$theme).'/js/jquery-ui.js');
+  
+     //drupal_add_css(drupal_get_path('module','quick_quotation').'/css/classic.css');
+     drupal_add_js(drupal_get_path('module','quick_quotation').'/js/jquery-1.7.js');
+     drupal_add_js(drupal_get_path('module','quick_quotation').'/js/jquery-ui-1.8.16.custom.min.js');
+    // drupal_add_js(drupal_get_path('module','quick_quotation').'/js/jQRangeSlider-withRuler-min.js');
+     
+    drupal_add_js(drupal_get_path('theme',$theme).'/js/site.js');
+    
+    /*
+    $form['first_name'] = array(
+        '#title' => t('Your Name'),
+        '#type' => 'textfield',
+        '#size'=>20,
+        '#default_value' => (isset($user->first_name)) ? $user->first_name : '',
+        '#attributes'=>array(
+            'placeholder'=>t('First Name'),
+            'id'=>array('quick-quotation-first-name'),
+            'class'=>array('quick-quotation-first-name'),
+        ),
+        //'#required'=>true,
+    );
+    
+  $form['last_name'] = array(
+        '#type' => 'textfield',
+        '#default_value' => (isset($user->last_name)) ? $user->last_name : '',
+        '#size'=>20,
+        '#attributes'=>array(
+            'placeholder'=>t('Last Name'),
+            'id'=>array('quick-quote-last-name'),
+        ),
+        //'#required'=>true,
+  );
+  $form['phone_number'] = array(
+        '#title' => t('Your Mobile Number<br/>'),
+        '#type' => 'textfield',
+        '#default_value' => (isset($user->mobile_no)) ? $user->mobile_no : '',
+        '#size'=>15,
+        '#attributes'=>array(
+            'placeholder'=>t('Mobile Number'),
+            'id'=>array('quick-quote-phone-number'),
+        ),
+        '#maxlength'=>10,
+  );  
+  
+  $form['email'] = array(
+        '#title' => t('Your Email ID'),
+        '#type' => 'textfield',
+        '#default_value' => (isset($user->mail)) ? $user->mail : '',
+        '#size'=>30,
+        '#attributes'=>array(
+            'placeholder'=>t(''),
+            'id'=>array('quick-quote-email'),
+        ),
+  );*/
+    
+    /*
+  $form['content_prefix']=array(
+  
+    '#prefix'=>'<div class="dataentery">',
+    '#markup'=>'<p>A FEW DETAILS ABOUT YOU</p>',
+  );  */
+  
+  $form['#attributes']['class'][] = 'detailsform';
+  $quote_region = !empty($form_state['values']['select_location']) ? $form_state['values']['select_location'] : "";
+  
+  $form['location_label']=array(
+  
+  			'#markup'=>'<label>Location</label>',	
+			'#prefix'=>'<div class="formdata">',
+  );
+  
+  $form['select_location']=array(
+        //'#title'=>'Location',
+        '#type'=>'select',
+        '#options'=> $cities,
+        //'#default_value' => $quote_region,
+		'#suffix'=>'</div>',
+        
+        /*
+        '#attributes'=>array(
+            'class'=>array('loginiconselect'),
+        ),*/
+        //'#required' => TRUE,
+   );
+   $num_adults = !empty($form_state['values']['adults']) ? $form_state['values']['adults'] : 1;
+     
+	 $form['adult_label']=array(
+  			'#markup'=>'<label>Adults</label>',
+			'#prefix'=>'<div class="formdata">',
+  );
+    $form['people']['adults']=array(
+        '#type'=>'select',
+        //'#title' => t('Adults'),
+        '#options'=>array(
+            1=>1,
+            2=>2,
+            3=>3,
+            4=>4,
+        ),
+        '#default_value' => $num_adults,
+        '#prefix'=>'<div style="float:left;">',
+        '#suffix'=>'</div>'
+    );
+    $num_childs = !empty($form_state['values']['child']) ? $form_state['values']['child'] : 0;
+	
+	$form['people']['child_label']=array(
+  			'#markup'=>'<label style="padding-left:25px;">Children</label>',
+  	);
+    $form['people']['child']=array(
+        '#type'=>'select',
+        //'#title' => t('Children'),
+        '#options'=>array(
+            0=>0,
+            1=>1,
+            2=>2,
+            3=>3,
+            4=>4,
+        ),
+        '#default_value' => $num_childs,  
+        '#prefix'=>'<div style="float:left;">',
+        '#suffix'=>'</div></div>'       
+    );
+    
+    /*
+    $form['people_details']['gender']=array(
+        '#type'=>'radios',
+        '#title'=>t('Gender'),
+        '#options'=>array(
+            0=>Male,
+            1=>Female,
+        ),
+        '#prefix'=>'<div class="formdata">',
+        '#suffix'=>'</div>'
+    );*/
+   
+    $form['people_details']['gender']=array(
+        '#type'=>'item',
+        '#title'=>t('Gender'),
+        '#markup'=>'<div id="radio" class="radio">
+                    
+                        <input type="radio" id="male" name="gender" '.$male_checked.$checked.' value=0 /><label for="male">Male</label>
+                        <input type="radio" id="female" name="gender" '.$female_checked.' value=1 /><label for="female">Female</label>
+                    </div>',
+        '#prefix'=>'<div class="formdata">',
+        '#suffix'=>'</div>'
+    );
+    /*
+    $form['people_details']['dob_year'] = array(
+        '#type' => 'select',
+        '#title' => 'Date Of Birth',
+        '#options' => $adult['years'],
+        '#default_value' => isset($year) && !empty($year) ? $year : $adult['year'],
+    );
+    $form['people_details']['dob_month'] = array(
+        '#type' => 'select',
+        
+        '#options' => $adult['months'],
+        '#default_value' => isset($month) && !empty($month) ? $month : $adult['month'],
+    );
+    $form['people_details']['dob_day'] = array(
+        '#type' => 'select',
+        '#options' => $adult['days'],
+        '#default_value' => isset($day) && !empty($day) ? $day : $adult['day'],
+    );*/
+    
+    $form['people_details']["dob"]=array(
+  
+            '#type'=>'date',
+//            '#title' => 'Date of Birth',
+            '#default_value'=>array(
+                'year'=>$year,
+                'month'=>$month,
+                'day'=>$day,
+            ), 
+            '#prefix'=>'<div class="formdata"><label>Date of Birth</label><div class="dataofbirth">',
+            '#suffix'=>'</div></div>'
+    );
+
+    $form['range_slider']=array(
+        '#type'=>'item',
+        '#markup'=>'<p>SUM INSURED (in lakhs)</p>
+                        <p>Move the slider to the amount you wish to insure.</p>    
+                        <div id="amount_custom" style="border: 0; color: #f6931f; font-weight: bold;"></div>
+                    <div id="slider_custom" style="width:400px;"></div>
+                    <div class="steps" style="border: 1px solid transparent; 
+                                              width: 400px;
+                                              position: relative;
+                                              height: 30px;"></div>',
+                    '#prefix'=>'<div class="formdata">',
+                    '#suffix'=>'</div>'
+        );
+    
+    /*
+    $form['range_slider']=array(
+        '#type'=>'item',
+        '#markup'=>'<p>SUM INSURED (in lakhs)</p>
+                        <p>Move the slider to the amount you wish to insure.</p>    
+                        <div id="amount" style="border: 0; color: #f6931f; font-weight: bold;"></div>
+                    
+                    <div id="slider"></div>',
+        '#prefix'=>'<div class="formdata">',
+        '#suffix'=>'</div>'
+    );*/
+    
+    /*
+    $form['sum_insured']['si_range'] = array(
+          '#title' => 'Choose a Sum Insured appropriate for you',
+          '#type' => 'jslider',
+          '#default_value' => array('value' => 4),
+          '#orientation' => 'horizontal',
+          '#slider_style' => 'blue',
+          '#range' => false,
+          '#min' => 1,
+          '#max' => 10,
+          '#step' => 1,
+          //'#required' => TRUE,
+          '#disabled' => FALSE,
+          '#display_inputs' => FALSE,
+          '#display_values' => TRUE,
+          '#slider_length' => '400px',  
+    );
+    */
+    
+    $form['premium']=array(
+    
+            '#prefix'=>'<div class="premiumlist">',
+            '#suffix'=>'</div>',
+    );
+    
+    /*
+    $form['tipdetails']=array(
+            '#prefix'=>'<div class="tipdetails">',
+            '#markup'=>'<div class="tips">
+                          <div class="text">TIP  |</div>
+                          <div class="ptext">Most people have chosen a sum insured of Rs.5 Lakh 
+                            in this category</div>
+                        </div>
+                        <div class="dicls">
+                          <p><strong>DISCLAIMER</strong> Lorem ipsum dolor sit amet nunc justo avec pharetra quo requisite adipiscing loremipsum.</p>
+                        </div>
+                      </div>',
+            '#suffix'=>'</div>',
+    );*/
+    
+    
+    
+    
+    $form['si-hidden']= array(
+        '#type'=>'hidden',
+        '#attributes'=>array(
+            'class'=>'si-hidden-value',
+        
+        ),
+    );
+    $form['ajax_loading']= array(
+        '#markup'=>'<div id="LoadingImage" style="display: none">Loading......Please Wait</div>',
+    );
+     
+    $form['submit'] = array(
+        '#type' => 'submit',
+        '#value' => t('Calculate Premium'),
+    );
+    $form['disclamer']=array(
+        '#markup'=>'<p><strong>DISCLAIMER</strong> Lorem ipsum dolor sit amet nunc justo avec pharetra quo requisite adipiscing loremipsum.</p',
+    );
+    
+    /*
+    $form['content_suffix']=array(
+        '#suffix'=>'</div>',
+    );*/
+    
+  return $form;
+
+
+}   
+function fetch_premium_ajax($form,&$form_state){
+    
+   
+    $object=new stdClass();
+    $object->sumInsured=$form_state['values']['si-hidden']*100000;;
+    
+    
+    
+    $rawPlans = product_configurator_webservice('',$object);
+    
+    $element = $form['premium'];
+    
+        $element['#markup']='Approximate Premium  &nbsp;&nbsp;&nbsp;';
+    foreach($rawPlans as $plan){
+        
+        
+        $initial_premium=$plan->basePremium;
+        $element['#markup'].='Rs &nbsp;'.$initial_premium.'<br/>';
+    }
+     
+    return $element;
+    
+    
+}
+function ajax_example_submit($form, $form_state){
+    
+    
+    if (!form_get_errors()) {
+        $element = $form['sum_insured']['premium'];
+        $query=db_select('node','n')
+            ->fields('n',array('nid','title'))
+            ->condition('n.type','product')
+            ->range(0,2)
+            ->execute();
+     $element['#markup']='';
+     foreach($query as $result){
+        
+        $plan[$result->nid]=$result->title;        
+        $element['#markup'].=' Rs '.$values['sum_insured_value1'] .'050 &nbsp;&nbsp;Gold Plan'.l('Buy Now','node/'.$result->nid).'<br/>';
+    } 
+        return $element;
+  }else{
+    
+    return $form['sum_insured']['premium'];
+     
+  }
+}
+/*
+function quick_quote_form_validate($form,&$form_state){
+    
+            
+    //dpr($form_state['values']);exit;    
+    
+    $values=$form_state['values'];
+    if(empty($values['first_name']) || !ctype_alpha($values['first_name'])){
+        form_set_error($form_state['values']['first_name'],'First name contains empty/invalid characters.');
+        
+    }elseif(empty($values['last_name']) || !ctype_alpha($values['last_name'])){
+        form_set_error($form_state['values']['first_name'],'Last name contains empty/invalid characters.');
+                   
+    }elseif(empty($values['phone_number']) || !ctype_digit($values['phone_number']) || validate_phone_number($values['phone_number'])){
+        form_set_error($form_state['values']['phone_number'],'Phone number contains empty/invalid characters.');
+        
+    }elseif(validate_email($values['email'])){
+        form_set_error($form_state['values']['email'],'Invalid Email address');
+        
+    }elseif($values['select_location']=='None'){
+        form_set_error($form_state['values']['select_location'],'Please Select Your City');
+        
+    }
+}
+
+function  quick_quote_form_submit($form,&$form_state){
+    
+       
+    
+        //dpr($_SESSION);
+        
+            //dpr($form_state['values']['si-hidden']);
+        $_SESSION['quick-quote']['si']=$form_state['values']['si-hidden']*100000;
+        
+    
+        //dpr($_SESSION);exit;    
+    
+        
+    
+    //$form_state['complete form']['#action']='plans/calculate-premium';
+    
+    $form_state['redirect'] = 'plans/calculate-premium';   
+    //dpr($form_state['complete form']['#action']);exit;
+    
+    
+    
+}*/
+/*
+function quick_quotation_ajax_details_form($js = FALSE){
+    
+    
+    if ($js) {
+        ctools_include('ajax');
+        ctools_include('modal');
+        $form_state = array(
+            'ajax' => TRUE,
+            'title' => t('Quick Quotation'),
+        );
+    
+    $output = ctools_modal_form_wrapper('quick_quotation_start_form', $form_state);
+    
+    
+    print ajax_render($output);
+    exit;
+  }else {
+    return $output;
+  }
+    
+}*/
+function quick_quotation_start_form($form,&$form_state){
+    
+    
+    
+	global $theme;
+    
+    $form['mandantory']=array(
+            '#type'=>'item',
+            '#markup'=>'<div>All fields are mandatory</div>',
+    );
+    $form['first_name'] = array(
+        '#title' => t('Your Name'),
+        '#type' => 'textfield',
+        '#size'=>20,
+      //  '#default_value' => $form_state['object']->first_name,
+        '#attributes'=>array(
+            'placeholder'=>t('First Name'),
+            'id'=>array('quick-quotation-first-name'),
+        ),
+    //'#required'=>true,
+    );
+    
+  $form['last_name'] = array(
+        '#type' => 'textfield',
+        //'#default_value' => $form_state['object']->last_name,
+        '#size'=>20,
+        '#attributes'=>array(
+            'placeholder'=>t('Last Name'),
+            'id'=>array('quick-quote-last-name'),
+        ),
+        //'#required'=>true,
+  );
+  $form['phone_number'] = array(
+        '#title' => t('Your Mobile Number<br/>'),
+        '#type' => 'textfield',
+        '#default_value' => $form_state['object']->phone_number,
+        '#size'=>30,
+        '#attributes'=>array(
+            'placeholder'=>t('Mobile Number'),
+            'id'=>array('quick-quote-phone-number'),
+        ),
+  );  
+  $form['email'] = array(
+        '#title' => t('Your Email ID'),
+        '#type' => 'textfield',
+        //'#default_value' => $form_state['object']->email,
+        '#size'=>30,
+        '#attributes'=>array(
+            'placeholder'=>t(''),
+            'id'=>array('quick-quote-email'),
+        ),
+  );
+  $quote_region = !empty($form_state['values']['select_location']) ? $form_state['values']['select_location'] : "";
+  $form['select_location']=array(
+        '#title'=>'Location',
+        '#type'=>'select',
+        '#options'=>array(
+            'None'=>'Select yout town',
+            'Delhi'=>'Delhi',
+            'Chennai'=>'Chennai',
+            'Mumbai'=>'Mumbai',
+            'Kolkata'=>'Kolkata',
+            'Pune'=>'Pune',
+        ),
+        '#default_value' => $quote_region,
+        //'#required' => TRUE,
+   );
+   $num_adults = !empty($form_state['values']['adults']) ? $form_state['values']['adults'] : 1;
+   
+   $form['people']['adults']=array(
+        '#type'=>'select',
+        '#title' => t('Adults'),
+        '#options'=>array(
+            1=>1,
+            2=>2,
+            3=>3,
+        ),
+        '#default_value' => $num_adults,
+    );
+    $num_childs = !empty($form_state['values']['child']) ? $form_state['values']['child'] : 0;
+    $form['people']['child']=array(
+        '#type'=>'select',
+        '#title' => t('Children'),
+        '#options'=>array(
+            0=>0,
+            1=>1,
+            2=>2,
+            3=>3,
+        ),
+        '#default_value' => $num_childs,         
+    );
+    
+    $form['people_details']['gender']=array(
+         '#type'=>'radios',
+         '#title'=>t('Gender of the eldest insured'),
+         '#options'=>array(
+                0=>'Male',
+                1=>'Female',
+         ),
+    );
+    $form['people_details']["dob"]=array(
+            '#type'=>'date',
+            '#title' => check_plain('DOB of the eldest insured'),
+    );
+	$form['insured_image']=array(
+		'#type'=>'item',
+		'#title' => 'Choose a Sum Insured appropriate for you',
+		'#markup'=>'<br/><div class=""><img src="'.drupal_get_path('theme',$theme).'/images/insured.jpg"></div>',
+	
+	);
+    $form['sum_insured']['si_range'] = array(
+          
+          '#type' => 'jslider',
+          '#default_value' => array('value' => 4),
+          '#orientation' => 'horizontal',
+          '#slider_style' => 'blue',
+          '#range' => false,
+          '#min' => 1,
+          '#max' => 6,
+          '#step' => 1,
+          //'#required' => TRUE,
+          '#disabled' => FALSE,
+          '#display_inputs' => FALSE,
+          '#display_values' => TRUE,
+          '#slider_length' => '381px',  
+    );
+    $form['sum_insured']['approx']=array(
+    
+            '#type'=>'item',
+            '#prefix'=>'<div class="approx-premium-text">Approximate Premium',
+            '#suffix'=>'</div>',  
+    
+    );
+    $form['sum_insured']['premium']=array(
+    
+            '#type'=>'item',
+            '#prefix'=>'<div class="approx-premium">',
+            '#suffix'=>'</div>',
+    );
+    $form['errinfo']= array(
+        '#type' => 'hidden',
+    );
+	
+    /*
+    $form['action'] = array(
+                '#prefix'=>'<div class="admin-cancel-submit">',
+                '#suffix'=>'</div>',    
+     );
+    $form['action']['submit'] = array(
+                '#type' => 'submit',
+                '#value' => t('Done'),
+    );*/
+  return $form;
+  
+}
+
+function quick_quotation_start_form_submit(&$form, &$form_state){
+    
+  
+    //dpr($form_state['values']);exit;  
+    
+}
+     
+function quotation_modify_ajax_details_form($js = FALSE){
+    
+    
+    if ($js) {
+        ctools_include('ajax');
+        ctools_include('modal');
+        $form_state = array(
+            'ajax' => TRUE,
+            'title' => t('Modify details to view more plans'),
+        );
+    
+    $output = ctools_modal_form_wrapper('quotation_modify_start_form', $form_state);
+    print ajax_render($output);
+    exit;
+  }else {
+    return $output;
+  }   
+}
+function quotation_modify_start_form($form,&$form_state){
+    
+   global $theme,$base_url,$cities,$user;
+   
+   if($user->uid==0){
+        
+        if(isset($_SESSION['guestuser'])){
+        
+            $guestuser=$_SESSION['guestuser'];
+         }
+    }else{
+        $guestuser=$user;
+    }
+    if(isset($_SESSION['quick_quote'])){  
+            $values=$_SESSION['quick_quote'];
+            
+    }else if(isset($_SESSION['user_quote_no'])){
+        
+        //foreach($_SESSION['quick_quote_data'] as $key=>$value){
+            
+                $quote_id=$_SESSION['user_quote_no'];
+                
+                $values=quote_details_by_id($quote_id);
+          //      break;
+        //}   
+   }
+    $si_values=_plan_si_values();       
+    foreach($si_values as $value){
+        
+        $si_range[]=(int)$value->field_si_value_value;
+    }
+    sort($si_range);
+    drupal_add_js(array('quick_quote' => array('si_range_value' => $si_range)), 'setting');
+    
+    drupal_add_css(drupal_get_path('theme',$theme).'/css/jquery-ui.css');
+    drupal_add_js(drupal_get_path('theme',$theme).'/js/jquery-1.9.1.js');
+    
+    
+     //drupal_add_css(drupal_get_path('module','get_quote').'/css/classic.css');
+     drupal_add_js(drupal_get_path('theme',$theme).'/js/jquery-1.7.js');
+     drupal_add_js(drupal_get_path('theme',$theme).'/js/jquery-ui-1.8.16.custom.min.js');
+    // drupal_add_js(drupal_get_path('theme',$theme).'/js/jQRangeSlider-withRuler-min.js');
+     drupal_add_js(drupal_get_path('theme',$theme).'/js/jquery.cycle.all.min.js');
+     drupal_add_js(drupal_get_path('module','quick_quotation').'/js/quote-modify.js');
+    
+    $form['headline']=array(
+        '#type'=>'item',
+        '#markup'=>'<div class="revealpopdetails">
+            <h1>View the plans and premiums best suited to you<br />
+			in <strong>4 straight forward steps.</strong></h1>
+			<div class="step">Why do I need to go through these steps?</div>
+			<a class="close-reveal-modal"><img src="images/closed.png" width="54" height="18" alt=""></a>
+            </div>',
+    ); 
+    $form['people']=array(
+        '#type'=>'item',
+        '#markup'=>'<div class="family-count">
+                        <div class="people-flow"><a href="javascript:void(0)">How many people do want insure ?</a></div>
+                     </div>',
+        
+    );
+    
+    $num_adults = !empty($form_state['values']['adults']) ? $form_state['values']['adults'] : $values['no_adults'];
+    $form['adults']=array(
+    
+        '#type'=>'select',
+        '#title' => t('Adults'),
+        '#prefix'=>'<div id="name-adult">',
+        '#options'=>array(
+            1=>1,
+            2=>2,
+            3=>3,
+            4=>4,
+        ),
+        '#default_value' => $num_adults,
+    );
+    $num_childs = !empty($form_state['values']['child']) ? $form_state['values']['child'] : $values['no_childs'];
+    $form['child']=array(
+        '#type'=>'select',
+        '#title' => t('Children(below 18 years)'),
+        '#options'=>array(
+            0=>0,
+            1=>1,
+            2=>2,
+            3=>3,
+            4=>4,
+        ),
+        '#default_value' => $num_childs,         
+    );
+    $form['ajax_loading_people']= array(
+        '#markup'=>'<div id="LoadingImage_people" style="display: none">Loading......Please Wait</div>',
+    );
+    $form['submit'] = array(
+                '#type' => 'item',
+                '#suffix'=>'<div class="count-done"><a href="javascript:void(0)">DONE</a></div></div>',
+    );
+    
+    $form['people_details']=array(
+        '#type'=>'item',
+        '#markup'=>'<div id="people-details-div">
+                        <div class="people-details-flow"><a href="javascript:void(0)">Give us a few basic details about them</a></div>
+                     </div>',
+    );
+    $form['content-start']=array(
+          
+          '#prefix'=>'<div id="user-details"><div class="details-form">'
+    ); 
+    
+    $form['cycle-start']=array(
+        
+        '#prefix'=>'<div id="carousel_home">',
+        
+    );
+    
+    for($i=1,$j=1,$g=1;$i<=($num_adults + $num_childs);$i++){
+        
+        if($i==1){
+            
+            $group_class="group_$g";
+            $form["grouped-content_$g"]=array(
+                '#type'=>'item',
+                '#prefix'=>'<div class="'.$group_class.' grouppanel" id="'.$g.'" >',
+                '#suffix'=>'</div>'
+            );
+            
+        }else if($i==4){
+            
+            $g++;
+            $group_class="group_$g";
+            $form["grouped-content_$g"]=array(
+                '#type'=>'item',
+                '#prefix'=>'<div class="'.$group_class.' grouppanel" id="'.$g.'" >',
+                 '#suffix'=>'</div>'
+            );
+            
+        }else if($i==7){
+            
+            $g++;
+            $group_class="group_$g";
+            $form["grouped-content_$g"]=array(
+                '#type'=>'item',
+                '#prefix'=>'<div class="'.$group_class.' grouppanel" id="'.$g.'" >',
+                '#suffix'=>'</div>'
+            );
+        }else if($i==10){
+            
+            $g++;
+            $group_class="group_$g";
+            $form["grouped-content_$g"]=array(
+                '#type'=>'item',
+                '#prefix'=>'<div class="'.$group_class.' grouppanel" id="'.$g.'" >',
+                '#suffix'=>'</div>'
+            );
+        }else if($i==13){
+            
+            $g++;
+            $group_class="group_$g";
+            $form["grouped-content_$g"]=array(
+                '#type'=>'item',
+                '#prefix'=>'<div class="'.$group_class.' grouppanel" id="'.$g.'" >',
+                '#suffix'=>'</div>'
+            );
+        }
+        
+        if($i<=$num_adults){
+            
+            $adult_default_value=db_select("get_quote_people_details",'g')
+                        ->fields('g')
+                        ->condition('quote_id',$values['qid'])
+                        ->condition('people_type','adult')
+                        ->condition('ordering',$i)
+                        ->execute()->fetchAssoc();
+                        
+            
+            if(isset($adult_default_value) && !empty($adult_default_value)){
+            
+                
+                    $gender=!empty($adult_default_value['gender']) ? $adult_default_value['gender'] : 0;
+                    $tobacco=!empty($adult_default_value['tobacco']) ? $adult_default_value['tobacco'] : 0;
+                    $alcohol=!empty($adult_default_value['alcohol']) ? $adult_default_value['alcohol'] : 0;
+                    $cigarette=!empty($adult_default_value['cigarette']) ? $adult_default_value['cigarette'] :0;
+                    
+                    $tobacco_consumption=!empty($adult_default_value['tobacco_consumption']) ? $adult_default_value['tobacco_consumption'] : 1;
+                    $alcohol_consumption=!empty($adult_default_value['alcohol_consumption']) ? $adult_default_value['alcohol_consumption'] : 1;
+                    $cigarette_consumption=!empty($adult_default_value['cigarette_consumption']) ? $adult_default_value['cigarette_consumption'] :1;
+                    
+                    $day=(int)(date('j',!empty($adult_default_value['dob']) ? $adult_default_value['dob'] : time()));
+                    $month=(int)(date('n',!empty($adult_default_value['dob']) ? $adult_default_value['dob']: time()));
+                    $year=(int)(date('Y',!empty($adult_default_value['dob']) ? $adult_default_value['dob'] : time()));
+                      
+            }
+            $form["grouped-content_$g"]["adult_$i"]=array(
+                '#type'=>'item',
+                '#title'=>"Adult $i",
+				'#prefix'=>'<div class="adultfieldsdetails" id="'.$i.'">'
+            );
+            
+            if($i==1 && empty($adult_default_value)){
+                
+                    if(isset($_SESSION['user_details']['dob'])){
+                        $day=(int)(date('j',!empty($_SESSION['user_details']['dob']) ? $_SESSION['user_details']['dob']: time()));
+                        $month=(int)(date('n',!empty($_SESSION['user_details']['dob']) ? $_SESSION['user_details']['dob']: time()));
+                        $year=(int)(date('Y',!empty($_SESSION['user_details']['dob']) ? $_SESSION['user_details']['dob'] : time()));
+                    }
+                    if(isset($_SESSION['user_details']['gender'])){
+                        
+                        $gender=!empty($_SESSION['user_details']['gender']) ? $_SESSION['user_details']['gender'] : 0;
+                    }
+            }            
+            $form["grouped-content_$g"]["ad_gender_$i"] = array(
+                '#type'=>'radios',
+                '#title'=>t('Gender'),
+                '#options'=>array(
+                    0=>'Male',
+                    1=>'Female',
+                ),
+                //'#default_value'=>isset($_SESSION['people_details']['adults']) ? $_SESSION['people_details']['adults'][$i]['gender'] : 0, 
+                '#default_value'=>isset($gender) ? $gender : 0,
+            );
+            
+            
+            $form["grouped-content_$g"]["ad_dob_$i"]=array(
+                '#type'=>'date',
+                '#title' => check_plain('Date of Birth'),
+                /*
+                '#default_value'=>array(
+                    'year'=>isset($_SESSION['people_details']['adults']) ? $_SESSION['people_details']['adults'][$i]['year'] : date('Y',time()),
+                    'month'=>isset($_SESSION['people_details']['adults']) ? $_SESSION['people_details']['adults'][$i]['month'] : date('n',time()),
+                    'day'=>isset($_SESSION['people_details']['adults']) ? $_SESSION['people_details']['adults'][$i]['day'] : date('j',time()),
+                ),*/
+                '#default_value'=>array(
+                    'year'=>isset($year) ? $year : (int)(date('Y')),
+                    'month'=>isset($month) ? $month : (int)(date('n')),
+                    'day'=>isset($day) ? $day : (int)(date('j')),
+                ),
+            );
+            unset($year);unset($month);unset($day);unset($gender);
+            $form["grouped-content_$g"]["ad_tobacco_$i"]=array(
+                '#type'=>'radios',
+                '#title'=>t('Consumes tobacco ?'),
+                '#options'=>array(
+                    0=>'No',
+                    1=>'Yes',
+                ),
+                //'#default_value'=>isset($_SESSION['people_details']['adults']) ? $_SESSION['people_details']['adults'][$i]['tobacco'] : 0,
+                '#default_value'=>isset($tobacco) ? $tobacco : 0,
+             );  
+             $form["grouped-content_$g"]["ad_tobacco_yes_$i"]=array(
+                '#type'=>'select',
+                '#options'=>array(
+                  //   0=>'No',
+                    1=>'Less than 2',
+                    2=>'More than 2',
+                ),
+                '#attributes'=>array(
+                    'class'=>array('tobacco_value'),
+                ),
+                '#default_value'=>isset($tobacco_consumption) ? $tobacco_consumption : 1,
+             );
+             $form["grouped-content_$g"]["ad_alcohol_$i"]=array(
+                '#type'=>'radios',
+                '#title'=>t('Consumes alcohol ?'),
+                '#options'=>array(
+                    0=>'No',
+                    1=>'Yes',
+                ),
+               // '#default_value'=>isset($_SESSION['people_details']['adults']) ? $_SESSION['people_details']['adults'][$i]['alcohol'] : 0,
+                '#default_value'=>isset($alcohol) ? $alcohol : 0,
+             );
+             $form["grouped-content_$g"]["ad_alcohol_yes_$i"]=array(
+                '#type'=>'select',
+                '#options'=>array(
+                   // 0=>'No',
+                    1=>'Less than 60ml',
+                    2=>'More than 60ml',
+                ),
+                '#attributes'=>array(
+                    'class'=>array('tobacco_value'),
+                ),
+                '#default_value'=>isset($alcohol_consumption) ? $alcohol_consumption : 1,
+                
+             );
+             $form["grouped-content_$g"]["ad_cigarette_$i"]=array(
+                '#type'=>'radios',
+                '#title'=>t('Smokes Cigarette/Beedi ?'),
+                '#options'=>array(
+                    0=>'No',
+                    1=>'Yes',
+                ),
+               // '#default_value'=>isset($_SESSION['people_details']['adults']) ? $_SESSION['people_details']['adults'][$i]['cigarette'] : 0,
+               '#default_value'=>isset($cigarette) ? $cigarette : 0,
+				'#suffix'=>'</div>',
+             ); 
+             $form["grouped-content_$g"]["ad_cigarette_yes_$i"]=array(
+                '#type'=>'select',
+                '#options'=>array(
+                  //  0=>'No',
+                    1=>'Less than 5',
+                    2=>'More than 5',
+                ),
+                '#attributes'=>array(
+                    'class'=>array('tobacco_value'),
+                ),
+                '#default_value'=>isset($cigarette_consumption) ? $cigarette_consumption : 1,
+             ); 
+        }else if($j<=$num_childs){
+            
+            
+            $child_default_value=db_select("get_quote_people_details",'g')
+                        ->fields('g')
+                        ->condition('quote_id',$values['qid'])
+                        ->condition('people_type','child')
+                        ->condition('ordering',$j)
+                        ->execute()->fetchAssoc();
+            
+            if(isset($child_default_value) && !empty($child_default_value)){
+                
+                    $gender=!empty($child_default_value['gender']) ? $child_default_value['gender'] : 0;
+                    $tobacco=!empty($child_default_value['tobacco']) ? $child_default_value['tobacco'] : 0;
+                    $alcohol=!empty($child_default_value['alcohol']) ? $child_default_value['alcohol'] : 0;
+                    $cigarette=!empty($child_default_value['cigarette']) ? $child_default_value['cigarette'] :0;
+                    
+                    
+                    $tobacco_consumption=!empty($child_default_value['tobacco_consumption']) ? $child_default_value['tobacco_consumption'] : 1;
+                    $alcohol_consumption=!empty($child_default_value['alcohol_consumption']) ? $child_default_value['alcohol_consumption'] : 1;
+                    $cigarette_consumption=!empty($child_default_value['cigarette_consumption']) ? $child_default_value['cigarette_consumption'] :1;
+                    
+                    
+                    $ch_year=(int)(date('Y',!empty($child_default_value['dob']) ? $child_default_value['dob'] : time()));
+                    $ch_month=(int)(date('n',!empty($child_default_value['dob']) ? $child_default_value['dob']: time()));
+                    $ch_day=(int)(date('j',!empty($child_default_value['dob']) ? $child_default_value['dob'] : time()));
+            }
+            
+            $form["grouped-content_$g"]["child_$j"]=array(
+                '#type'=>'item',
+                '#title'=>"Child $j",
+				'#prefix'=>'<div class="childfieldsdetails" id="'.$j.'">'
+                
+            );
+            $form["grouped-content_$g"]["ch_gender_$j"] = array(
+                '#type'=>'radios',
+                    
+                '#title'=>t('Gender'),
+                '#options'=>array(
+                    0=>'Male',
+                    1=>'Female',
+                ),
+                //'#default_value'=>isset($_SESSION['people_details']['childs']) ? $_SESSION['people_details']['childs'][$j]['cigarette'] : 0,
+                '#default_value'=>isset($gender) ? $gender : 0,
+            );
+            $form["grouped-content_$g"]["ch_dob_$j"]=array(
+                '#type'=>'date',
+                '#title' => check_plain('Date of Birth'),
+                /*
+                '#default_value'=>array(
+                    'year'=>isset($_SESSION['people_details']['childs']) ? $_SESSION['people_details']['childs'][$j]['year'] : date('Y',time()),
+                    'month'=>isset($_SESSION['people_details']['childs']) ? $_SESSION['people_details']['childs'][$j]['month'] : date('n',time()),
+                    'day'=>isset($_SESSION['people_details']['childs']) ? $_SESSION['people_details']['childs'][$j]['day'] : date('j',time()),
+                ),*/
+                 '#default_value'=>array(
+                    'year'=>isset($ch_year) ? $ch_year : (int)(date('Y')),
+                    'month'=>isset($ch_month) ? $ch_month : (int)(date('n')),
+                    'day'=>isset($ch_day) ? $ch_day : (int)(date('j')),
+                ),
+            );
+            unset($year);unset($month);unset($day);unset($gender);
+            $form["grouped-content_$g"]["ch_tobacco_$j"]=array(
+                '#type'=>'radios',
+                '#title'=>t('Consumes tobacco ?'),
+                '#options'=>array(
+                    0=>'No',
+                    1=>'Yes',
+                ),
+               // '#default_value'=>isset($_SESSION['people_details']['childs']) ? $_SESSION['people_details']['childs'][$j]['tobacco'] : 0,
+                '#default_value'=>isset($tobacco) ? $tobacco : 0,
+             ); 
+             $form["grouped-content_$g"]["ch_tobacco_yes_$j"]=array(
+               '#type'=>'select',
+                '#options'=>array(
+                  // 0=>'No',
+                    1=>'Less than 2',
+                    2=>'More than 2',
+                ),
+                 '#attributes'=>array(
+                    'class'=>array('tobacco_value'),
+                ),
+                '#default_value'=>isset($tobacco_consumption) ? $tobacco_consumption : 1,
+                
+             ); 
+             $form["grouped-content_$g"]["ch_alcohol_$j"]=array(
+                '#type'=>'radios',
+                '#title'=>t('Consumes alcohol ?'),
+                '#options'=>array(
+                    0=>'No',
+                    1=>'Yes',
+                ),
+               // '#default_value'=>isset($_SESSION['people_details']['childs']) ? $_SESSION['people_details']['childs'][$j]['alcohol'] : 0,
+               '#default_value'=>isset($alcohol) ? $alcohol : 0,
+             );
+             $form["grouped-content_$g"]["ch_alcohol_yes_$j"]=array(
+                '#type'=>'select',
+                '#options'=>array(
+                   // 0=>'No',
+                    1=>'Less than 60ml',
+                    2=>'More than 60ml',
+                ),
+                '#attributes'=>array(
+                    'class'=>array('tobacco_value'),
+                ),
+                '#default_value'=>isset($alcohol_consumption) ? $alcohol_consumption : 1,
+             );
+             $form["grouped-content_$g"]["ch_cigarette_$j"]=array(
+                '#type'=>'radios',
+                '#title'=>t('Smokes Cigarette/Beedi ?'),
+                '#options'=>array(
+                    0=>'No',
+                    1=>'Yes',
+                ),
+                 //'#default_value'=>isset($_SESSION['people_details']['childs']) ? $_SESSION['people_details']['childs'][$j]['cigarette'] : 0,
+                 '#default_value'=>isset($cigarette) ? $cigarette : 0,
+				'#suffix'=>'</div>',
+             );  
+             $form["grouped-content_$g"]["ch_cigarette_yes_$j"]=array(
+                '#type'=>'select',
+                '#options'=>array(
+                   // 0=>'Select',
+                    1=>'Less than 5',
+                    2=>'More than 5',
+                ),
+                '#attributes'=>array(
+                    'class'=>array('tobacco_value'),
+                ),
+                '#default_value'=>isset($cigarette_consumption) ? $cigarette_consumption : 1,
+             ); 
+             $j++;
+        }
+    }
+    $form['content-cycle-end']=array(
+        '#suffix'=>'</div><div id="btn_next"><img src="'.$base_url.'/'.drupal_get_path('theme',$theme).'/images/btn_next.png" alt="Next" width="22" height="24" /></div>
+                    <div id="btn_prev"><img src="'.$base_url.'/'.drupal_get_path('theme',$theme).'/images/btn_prev.png" alt="Previous" width="22" height="24" /></div>',
+    );
+    
+    $form['content-end']=array(
+          '#suffix'=>'</div><div class="content-done"><a href="javascript:void(0)">DONE</a></div></div>'
+    );   
+    $form['user_region']=array(
+        '#type'=>'item',
+        '#markup'=>'<div id="customer-region">
+                        <div class="region-flow"><a href="javascript:void(0)">Where do you reside ?</a></div>
+                     </div>',
+    );     
+    $form['content-region']=array(
+    
+        '#type'=>'item',
+        '#prefix'=>'<div id="region-details">',
+        
+    );
+   
+   $form['region']['top_cities']=array(
+        '#type'=>'item',
+        '#markup'=>'<div class="top_cities">
+                    </div>',
+   );
+    
+   $quote_region = !empty($form_state['values']['select_region']) ? $form_state['values']['select_region'] : $values['city_id'];
+   $form['region']['select_region']=array(
+        '#type'=>'select',
+        '#options'=>$cities,
+        '#default_value' => $quote_region,
+        //'#required' => TRUE,
+   );
+    $form['end-region']=array(
+    
+        '#type'=>'item',
+        '#suffix'=>'<div class="region-done"><a href="javascript:void(0)">DONE</a></div></div>',
+        
+    );
+     $form['user_sum_insured']=array(
+        '#type'=>'item',
+        '#markup'=>'<div id="customer-si">
+                        <div class="si-flow"><a href="javascript:void(0)">What cover are you looking for ?</a></div>
+                     </div>',
+    );
+     $form['si-value-session']= array(
+        '#type'=>'hidden',
+        '#attributes'=>array(
+            'class'=>'si_hidden_value_session',
+        
+        ),
+        '#value'=>$values['sum_insured']/100000,
+    );  
+    
+     $form['clicked']=array(
+        '#type'=>'hidden',
+        '#value'=>isset($values['hd_option']) ? $values['hd_option'] : 0,
+        '#attributes'=>array(
+            'class'=>array('suggest_clicked'),
+        ),
+     );
+     
+     $form['clicked_price']=array(
+        '#type'=>'hidden',
+        '#value'=>isset($values['hd_option_price']) ? $values['hd_option_price'] : 0,
+        '#attributes'=>array(
+            'class'=>array('suggest_clicked_price'),
+        ),
+     );
+     
+     $form['si-value-modify']= array(
+        '#type'=>'hidden',
+        '#attributes'=>array(
+            'class'=>'si_hidden_value_modify',
+        ),
+    );
+    $form['content-si']=array(
+        '#type'=>'item',
+        '#prefix'=>'<div id="si-details">',
+    );
+    
+    if($values['hd_option'] && $values['hd_option_price']){
+        
+        $default_v=array(1);
+    }
+    $form['hd_check']=array(
+        '#type'=>'checkboxes',
+        '#options'=>array(
+            1=>'I am already insured but need addtional coverage',
+        ),
+        '#attributes'=>array(
+            'class'=>array('c1'),
+        ),
+        '#default_value'=>isset($default_v) ? array($default_v) : array(0), 
+    );
+    $form['hd_current_cover']=array(
+        '#type'=>'select',
+        '#title'=>'What is the value of your current cover?',
+        '#options'=>array(
+            0=>'Select',
+            1=>1,
+            2=>2,
+        ),
+        '#default_value'=>isset($values['hd_option_price']) ? $values['hd_option_price'] : 0,
+    );
+    
+     $form['hd_currnt_end']=array(
+     
+        '#markup'=>'<div id="toptestget"><h2>Choose a Sum insured appropriate for you</h2><p>Move the slider to the amount you wish to insure.</p></div><div id="works">How it works: Having an existing cover, called the High Deductible, proportaionally
+                    reduces the premium you need to pay for the additional cover you get from CignaTTK.
+                    At the time of a claim, you first use up your current cover and CignaTTK will
+                    cover your for hospital expenses upto the additional cover you buy)</div>',
+        
+    );
+    $form['range_slider']=array(
+        '#type'=>'item',
+        '#markup'=>'SUM INSURED (in lakhs)
+                        Move the slider to the amount you wish to insure.    
+                        <div id="amount_custom" style="display:none; border: 0; color: #f6931f; font-weight: bold;"></div>
+                    <div id="slider_custom" style="width:300px;"></div>
+                    <div class="steps" style="border: 1px solid transparent; 
+                                              width: 300px;
+                                              position: relative;
+                                              height: 30px;"></div>',
+        );
+    
+    /*
+    $form['range_slider']=array(
+        '#type'=>'item',
+        '#markup'=>'<p>
+                        <label for="amount">Price range:</label>
+                        <div id="amount" style="border: 0; color: #f6931f; font-weight: bold;"></div>
+                    </p>
+                    <div id="slider_quick_modify"></div>',
+    );*/
+    $form['premium']=array(
+    
+            '#type'=>'markup',
+            '#prefix'=>'<div id="approx-premium">',
+            '#suffix'=>'</div>',      
+    );
+    $form['ajax_loading']= array(
+        '#markup'=>'<div id="LoadingImage" style="display: none">Loading......Please Wait</div>',
+    );
+    $form['end-si']=array(
+    
+        '#type'=>'item',
+        '#markup'=>'<div class="calculate"><a href="javascript:void(0)">Calculate Premium</a></div>',
+        '#suffix'=>'<div class="si-done"><a href="javascript:void(0)">DONE</a></div></div>',
+        
+    );
+   	$form['action'] = array(
+		'#prefix'=>'<div class="quote-submit">',
+		'#suffix'=>'</div>',	
+	);
+	$form['action']['sort'] = array(
+		'#type' => 'submit',
+		'#value' => t('Show me the plans'),
+		'#attributes' => array('class' => array('admin-submit')),
+	);
+    return $form;
+    
+    
+}
+function quotation_modify_start_form_submit($form,&$form_state){
+    
+   // dpr($form_state['values']);exit;
+   if(isset($_SESSION['modified_return_quote_data']) && !empty($_SESSION['modified_return_quote_data'])){
+    
+            
+                $_SESSION['modified_return_quote_data_active']=$_SESSION['modified_return_quote_data'];
+                
+                unset($_SESSION['modified_return_quote_data']);
+   }
+        // Updating session values    
+        $_SESSION['modified_quick_quote']['no_adults']=$form_state['values']['adults'];
+        $_SESSION['modified_quick_quote']['no_childs']=$form_state['values']['child'];
+        $_SESSION['modified_quick_quote']['region']=$form_state['values']['select_region'];
+        $_SESSION['modified_quick_quote']['sum_insured']=$form_state['values']['si-value-modify']*100000;
+        $_SESSION['modified_quick_quote']['hd_option']=$form_state['values']['hd_check']['1'];
+        $_SESSION['modified_quick_quote']['hd_option_price']=$form_state['values']['hd_current_cover'];
+        $_SESSION['modified_quick_quote']['modify']=time();
+        //$_SESSION['modified_quick_quote']['flag']=1;
+        
+        /*
+        if(array_key_exists($_SESSION['quick_quote']['quote_no'],$_SESSION['no_of_quotes'])){
+            
+                $_SESSION['no_of_quotes'][$_SESSION['quick_quote']['quote_no']]=$_SESSION['quick_quote'];
+        }*/
+    
+    ctools_include('ajax');
+    ctools_add_js('ajax-responder');
+    $commands[] = ctools_ajax_command_redirect('plans/calculate-premium');
+    print ajax_render($commands);
+    exit;
+      
+    
+}
+/**
+ * Impelements hook_block_info
+ * 
+ */
+function  quick_quotation_block_info() {
+    $blocks['stored_quote_info']=array(
+        'info'=>'Stored Quote Information',
+        'visibility' => BLOCK_VISIBILITY_LISTED,
+	    'pages' => '<front>',
+    ) ;
+    return $blocks;
+    
+}
+
+/**
+ * Impelements hook_block_view
+ * 
+ * @param $delta
+ * @return Block view
+ */ 
+ 
+function quick_quotation_block_view($delta = '') {
+    
+    
+    $block = array();
+    switch ($delta) {
+	      
+       case 'stored_quote_info':
+            $block['subject']='';
+            $block['content']=_quotation_stored_information();
+            break; 
+	}
+    return $block;
+    
+} 
+
+/*
+function _quotation_stored_information(){
+    
+    global $user;
+    //print_r($user);die;
+    if(isset($_SESSION['no_of_quotes'])){
+        
+        $values=$_SESSION['no_of_quotes'];   
+    }
+    $guestuser = '';
+    $userid = '';
+    if(isset($_SESSION['guestuser'])){
+        
+        $guestuser=$_SESSION['guestuser'];   
+    }
+    
+    if($user->uid || !empty($_SESSION['guestuser'])){
+        $userid = isset($user->uid) ? $user->uid : $guestuser->uid;
+    }
+   $output='';
+   if($userid){
+    
+        $stored_quote=db_select("get_quote",'q')
+                        ->fields('q')
+                        ->condition('uid',$userid)
+                        ->condition('status',1)
+                        ->execute();
+                        
+        $display_flag=1;
+         if(!empty($stored_quote)){
+            
+            foreach($stored_quote as $key=>$user_quote){
+                
+                if(!empty($user_quote->finalpremium)){
+                    $finalPremium=$user_quote->finalpremium;
+                }else{
+                     $finalPremium=$user_quote->basepremium;
+                }
+                 $planid=db_select("field_data_field_plan_id",'p')
+                        ->fields('p',array('entity_id'))
+                        ->condition('field_plan_id_value',$user_quote->parentProductId)
+                        ->execute()->fetchField();
+                        
+                if($display_flag){
+                
+                    $output='<div class="recent_title"><strong><u>Welcome back ! Here are your recent searches</u></strong>';
+                    $display_flag=0;
+                }
+                $output.='<div id="quote_'.$user_quote->qid.'">
+                                <div class="quote_plan_id"><strong>'.$user_quote->parentProductId.'</strong></div>
+                                <div class="quote_members">'.$user_quote->no_adults.'&nbsp; ADULTS &nbsp;'.$user_quote->no_childs.'&nbsp; CHILD</div>
+                                <div class="quote_premium"><strong>Rs &nbsp;'.$finalPremium.'</strong>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;'.l("View Plan",'node/'.$planid,array('query'=>array('quote_id'=>$user_quote->qid))).'</div>
+                           </div><hr/>';     
+            }  
+         }
+           return $output;    
+        }else{
+            
+              if(isset($values)){
+
+                $display_flag=1;
+        
+                    foreach($values as $key=>$value){
+            
+                        
+                        if(isset($value['flag']) && $value['flag']==1 && $display_flag){
+                            
+                            $output='<div class="recent_title"><strong><u>Welcome back ! Here are your recent searches</u></strong>';
+                            $display_flag=0;    
+                        }
+                        
+                        $quote_id=$value['quote_no'];
+                        $quote_data=quote_details_by_id($quote_id);
+                        
+                        if(!empty($quote_data)){
+                            
+                            
+                            $planid=db_select("field_data_field_plan_id",'p')
+                                    ->fields('p',array('entity_id'))
+                                    ->condition('field_plan_id_value',$quote_data['parentProductId'])
+                                    ->execute()->fetchField();    
+                            
+                        }
+                        $finalPremium='';
+                        if(!empty($quote_data['finalpremium'])){
+                            
+                            $finalPremium=$quote_data['finalpremium'];
+                        }else{
+                            
+                            $finalPremium=$quote_data['basepremium'];
+                        }
+                         $output.='<div id="quote_'.$quote_data['qid'].'">
+                                <div class="quote_plan_id"><strong>'.$quote_data['parentProductId'].'</strong></div>
+                                <div class="quote_members">'.$quote_data['no_adults'].'&nbsp; ADULTS &nbsp;'.$quote_data['no_childs'].'&nbsp; CHILD</div>
+                                <div class="quote_premium"><strong>Rs &nbsp;'.$finalPremium.'</strong>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;'.l("View Plan",'node/'.$planid,array('query'=>array('quote_id'=>$quote_data['qid']))).'</div>
+                           </div><hr/>';
+                        
+                   }     
+                }
+             
+            return $output;
+        }
+   
+}*/
+
+function _quotation_stored_information(){
+    
+    global $user, $base_url, $theme;
+    
+    $guestuser = '';
+    $userid = '';
+    
+    if(isset($_SESSION['guestuser'])){
+        
+        $guestuser=$_SESSION['guestuser'];
+    }
+    
+    if(isset($_SESSION['no_of_quotes'])){
+        
+        $values=$_SESSION['no_of_quotes'];   
+    }
+    
+    if(isset($_SESSION['guestuser'])){
+        
+        $guestuser=$_SESSION['guestuser'];   
+    }
+    
+    if($user->uid || !empty($_SESSION['guestuser'])){
+        $userid = isset($user->uid) ? $user->uid : $guestuser->uid;
+    }
+    
+   $output='';
+   
+   if($userid){
+
+/*    
+        $stored_quote=db_select("get_quote",'q')
+                                    ->fields('q')
+                                    ->condition('uid',$user->uid)
+                                    ->condition('status',1)
+                                    ->execute()->fetchAll();
+*/    
+        $stored_quote=db_select("get_quote",'q')
+                        ->fields('q')
+                        ->condition('uid',$userid)
+                        ->condition('status',1)
+                        ->orderBy('created','DESC')
+                        ->range(0,2)
+                        ->execute()->fetchAll();
+        
+        //outputing result for logged in user
+        $output ='';
+                        
+        $display_flag=1;
+         if(!empty($stored_quote)){
+            
+            foreach($stored_quote as $key=>$user_quote){
+                
+                if(!empty($user_quote->finalpremium)){
+                    $finalPremium=$user_quote->finalpremium;
+                }else{
+                     $finalPremium=$user_quote->basepremium;
+                }
+                                     
+                 $planid=db_select("field_data_field_plan_id",'p');
+                 $planid->innerJoin('node','n','n.nid=p.entity_id');
+                 $planid->fields('p',array('entity_id'))
+                        ->condition('n.status',1)
+                        ->condition('p.entity_id',$user_quote->planid);
+                        
+                 $result=$planid->execute()->fetchField();
+                                                
+                 //$user_quote->planid=$result;   
+                 //$quote_policy[$user_quote->qid]=$user_quote;                 
+                
+                $node=node_load($result);
+                        
+                if($display_flag){
+                
+                    $output.='<div class="returnsersection">
+                                <h1>WELCOME BACK ! <span>'.(isset($user->data['first_name']) ? $user->data['first_name'] : $guestuser->data['first_name']) ."&nbsp;&nbsp;".(isset($user->data['last_name']) ? $user->data['last_name'] : $guestuser->data['last_name']).'</span> HERE ARE YOUR RECENT SEARCHES</h1>';
+                    
+                    $display_flag=0;
+                }
+                
+                $output.='<div class="planblog">
+                            <section>
+                                <div id="quote_'.$user_quote->qid.'">
+                                    <div class="planicon"><img src="'.file_create_url($node->uc_product_image['und']['0']['uri']).'" alt=""/></div>
+                                    <div class="plandeails">
+                                        <h3>'._plan_ws_short_name($result).'</h3>
+                                        <p>'.$user_quote->no_adults.'&nbsp; ADULTS &nbsp;'.$user_quote->no_childs.'&nbsp; CHILD</p>
+                                        <div class="cost"> <img src="'.url(drupal_get_path('theme',$theme)).'/images/rupes_sing.png" alt=""/><span class="price">'.$finalPremium.'</span><span>PREMIUM</span> </div>
+                                    </div>
+                                 '.l(t("View Plan"),'node/'.$result,array('attributes' => array('class' => 'big-link'),'query'=>array('quote_id'=>$user_quote->qid))).'
+                                </div>
+                           </section>
+                         </div>';
+                    
+            }
+            
+            $output .='<div class="planblog last">
+                            <section class="last">
+                              <div class="calldetails">
+                                <p>Need more clarity or time<br />
+                                  before deciding? We can help.</p>
+                                <div class="callme"><a href="#" data-reveal-id="myModal777" data-animation="none">Call me<a></div>
+                                <div class="emailme"><a>Email me</a></div>
+                              </div>
+                            </section>
+                          </div></div>';
+           
+         }
+           return $output;    
+        }else{
+            
+              //outputing result for logged in user
+              $output ='';
+            
+              if(isset($values)){
+
+                $display_flag=1;
+        
+                    foreach($values as $key=>$value){
+            
+                        
+                        if(isset($value['flag']) && $value['flag']==1 && $display_flag){
+                            
+                            $output.='<div class="returnsersection">
+                                        <h1>WELCOME BACK ! <span>'.(isset($user->data['first_name']) ? $user->data['first_name'] : $guestuser->data['first_name']) ."&nbsp;&nbsp;".(isset($user->data['last_name']) ? $user->data['last_name'] : $guestuser->data['last_name']).'</span> HERE ARE YOUR RECENT SEARCHES</h1>';
+                            $display_flag=0;    
+                        }
+                        
+                        $quote_id=$value['quote_no'];
+                        $quote_data=quote_details_by_id($quote_id);
+                        
+                        if(!empty($quote_data)){
+                            
+                            
+                            $planid=db_select("field_data_field_plan_id",'p');
+                            $planid->innerJoin('node','n','n.nid=p.entity_id');
+                            $planid->fields('p',array('entity_id'))
+                                    ->condition('n.status',1)
+                                    ->condition('p.entity_id',$quote_data['planid']);
+                             
+                            $result2=$planid->execute()->fetchField();
+                            
+                            $node=node_load($result2);  
+                            
+                        }
+                        
+                        $finalPremium='';
+                        if(!empty($quote_data['finalpremium'])){
+                            
+                            $finalPremium=$quote_data['finalpremium'];
+                        }else{
+                            
+                            $finalPremium=$quote_data['basepremium'];
+                        }
+                         $output.='<div class="planblog">
+                                    <section>
+                                        <div id="quote_'.$quote_data['qid'].'">
+                                                <div class="planicon"><img src="'.file_create_url($node->uc_product_image['und']['0']['uri']).'" alt=""/></div>
+                                                <div class="plandeails">
+                                                    <h3>'._plan_ws_short_name($result2).'</h3>
+                                                    <p>'.$quote_data['no_adults'].'&nbsp; ADULTS &nbsp;'.$quote_data['no_childs'].'&nbsp; CHILD</p>
+                                                    <div class="cost"> <img src="'.url(drupal_get_path('theme',$theme)).'/images/rupes_sing.png" alt=""/><span class="price">'.$finalPremium.'</span><span>PREMIUM</span> </div>
+                                                </div>
+                                                '.l(t("View Plan"),'node/'.$result2,array('attributes' => array('class' => 'big-link'),'query'=>array('quote_id'=>$quote_data['qid']))).'                                   
+                                        </div>
+                                    </section>
+                                   </div>';
+                        
+                   }
+                   
+                   $output .='<div class="planblog last">
+                            <section class="last">
+                              <div class="calldetails">
+                                <p>Need more clarity or time<br />
+                                  before deciding? We can help.</p>
+                                <div class="callme"><a href="#" data-reveal-id="myModal777" data-animation="none">Call me<a></div>
+                                <div class="emailme"><a>Email me</a></div>
+                              </div>
+                            </section>
+                          </div></div>';     
+                }
+             
+            return $output;
+        }
+   
+}

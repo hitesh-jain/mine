@@ -1,0 +1,384 @@
+:root .css3-selectbox, :root .css3-selectbox select, :root .css3-selectbox::after, :root .css3-selectbox::before {
+ display: inline-block;
+ vertical-align: top;
+ width:140px;
+ background:#fff !important;
+ border:1px solid #c6c6c6 !important;
+}
+
+:root .css3-selectbox::after, :root .css3-selectbox::before {
+ content: "";
+ -moz-pointer-events: none;
+ -webkit-pointer-events: none;
+ pointer-events: none;
+}
+
+:root .css3-selectbox, :root .css3-selectbox::after {
+ background: #ffffff !important;
+ border:1px solid #c6c6c6 !important;
+}
+:root .css3-selectbox select {
+	margin: 0;
+	padding:3px 0 0 3px;
+	border: 0;
+	background: transparent;
+	font: normal 11px/18px "Segoe UI", Arial, Sans-serif;
+	outline: none;
+}
+:root .css3-selectbox option {
+	background: #ededed;
+	border:0px solid #ededed;
+	padding:3px;
+}
+:root .css3-selectbox {
+	border: solid 1px #ededed;
+	overflow: hidden;
+	cursor: pointer;
+	position: relative;
+}
+
+:root .css3-selectbox::before {
+ background: url("../images/select.png") no-repeat scroll left top transparent;
+ height: 25px;
+ position: absolute;
+ right: -2px;
+ top: -2px;
+ width: 28px;
+ z-index: 1;
+}
+
+:root .css3-selectbox::after {
+ position: relative;
+ left: 1px;
+ width: 16px;
+ margin: 0 0 0 -17px;
+ box-shadow: -1px 0 0 1px #919191 inset;
+}
+
+:root .css3-selectbox:hover::before {
+ border-top-color: #fff;
+}
+.loginiconselect .css3-selectbox {
+	border:0px solid #000 !important;
+	width:207px !important;
+	height:24px;
+}
+.loginiconselect .css3-selectbox select {
+	width:207px !important;
+}
+ .loginiconselect .css3-selectbox::before {
+ background: url("../images/select1.jpg") no-repeat scroll left top transparent;
+ right:-3px;
+ top:0px;
+}
+.adultsselect .css3-selectbox {
+	border:0px solid #000 !important;
+	width:50px !important;
+	height:24px;
+	padding-top:1px;
+}
+.adultsselect .css3-selectbox select {
+	width:50px !important;
+}
+.adultsselect .css3-selectbox::before {
+ background: url("../images/select1.jpg") no-repeat scroll left top transparent;
+ right:-3px;
+ top:0px;
+}
+.datelist .css3-selectbox {
+	border:0px solid #000 !important;
+	width:60px !important;
+	height:24px;
+	padding-top:1px;
+	float:left;
+	margin-right:7px;
+	text-align:center;
+}
+.datelist .css3-selectbox select {
+	width:60px !important;
+	padding-left:8px;
+}
+.datelist .css3-selectbox::before {
+ background: url("../images/select1.jpg") no-repeat scroll left top transparent;
+ right:-3px;
+ top:0px;
+}
+.topsearch .world .css3-selectbox {
+	height:24px;
+}
+.monthlist .css3-selectbox {
+	border:0px solid #000 !important;
+	width:60px !important;
+	height:24px;
+	padding-top:1px;
+	float:left;
+	margin-right:7px;
+}
+.monthlist .css3-selectbox select {
+	width:60px !important;
+}
+.monthlist .css3-selectbox::before {
+ background: url("../images/select1.jpg") no-repeat scroll left top transparent;
+ right:-3px;
+ top:0px;
+}
+.yearslist .css3-selectbox {
+	border:0px solid #000 !important;
+	width:60px !important;
+	height:24px;
+	padding-top:1px;
+	float:left;
+}
+.yearslist .css3-selectbox select {
+	width:60px !important;
+}
+.yearslist .css3-selectbox::before {
+ background: url("../images/select1.jpg") no-repeat scroll left top transparent;
+ right:-3px;
+ top:0px;
+}
+.radio label {
+	display: inline-block;
+	cursor: pointer;
+	position: relative;
+	padding-left: 17px;
+	margin-right: 1px;
+	font-size: 13px;
+	width:63px !important;
+}
+.radio input[type=radio], input[type=checkbox] {
+	display: none;
+}
+.radio label:before {
+	content: "";
+	display: inline-block;
+	width: 13px;
+	height: 13px;
+	position: absolute;
+	left: 0;
+	bottom: 1px;
+	background:url(../images/radio.png) no-repeat left top;
+}
+.radio label:before {
+	border-radius: 8px;
+}
+.checkbox label {
+	margin-bottom: 10px;
+}
+.checkbox label:before {
+	border-radius: 3px;
+}
+input[type=radio]:checked + label:before {
+	background:url(../images/radio_hover.png) no-repeat left top;
+	font-size: 30px;
+	text-align: center;
+	line-height: 18px;
+}
+input[type=checkbox]:checked + label:before {
+	background:url(../images/radio_hover.png) no-repeat left top;
+	font-size: 15px;
+	color: #29abe2;
+	text-align: center;
+	line-height: 15px;
+}
+.otherdetails {
+	float: right;
+	height: 0;
+	position: relative;
+	width: 114px;
+	z-index: 2147483647;
+}
+.otherdetails span.css3-selectbox {
+	top:15px !important;
+	height:24px !important;
+	width:113px !important;
+}
+.fitimches .css3-selectbox {
+	border:0px solid #000 !important;
+	width:70px !important;
+	height:24px;
+	padding-top:1px;
+}
+.fitimches .css3-selectbox select {
+	width:70px !important;
+}
+ .fitimches .css3-selectbox::before {
+ background: url("../images/select1.jpg") no-repeat scroll left top transparent;
+ right:-3px;
+ top:0px;
+}
+.ui-buttonset .ui-button-text {
+	padding-left: 18px;
+	padding-top: 2px;
+}
+.dataofbirth {
+	float:left;
+	width:50%;
+	width:60%;
+}
+.dataofbirth .css3-selectbox {
+	border:0px solid #000 !important;
+	width:60px !important;
+	height:24px;
+	padding-top:0px;
+	float:left;
+	margin-right:7px;
+	text-align:center;
+}
+.dataofbirth .css3-selectbox select {
+	width:60px !important;
+	padding-left:8px;
+}
+.dataofbirth .css3-selectbox::before {
+ background: url("../images/select1.jpg") no-repeat scroll left top transparent;
+ right:-5px !important;
+ top:0px;
+}
+.howmanypeople {
+	float:left;
+	width:38%;
+	margin-bottom:13px;
+}
+.howmanypeople .css3-selectbox {
+	border:0px solid #000 !important;
+	width:60px !important;
+	height:24px;
+	padding-top:1px;
+	float:left;
+	margin-right:7px;
+	text-align:center;
+}
+.howmanypeople .css3-selectbox select {
+	width:60px !important;
+	padding-left:8px;
+}
+.howmanypeople .css3-selectbox::before {
+ background: url("../images/select1.jpg") no-repeat scroll left top transparent;
+ right:-3px;
+ top:0px;
+}
+.form-type-radio label {
+	display: inline-block;
+	cursor: pointer;
+	position: relative;
+	padding-left: 17px;
+	margin-right: 1px;
+	font-size: 13px;
+	width: auto !important;
+}
+.form-type-radio input[type=radio], input[type=checkbox] {
+	display: none;
+}
+.form-type-radio label:before {
+	content: "";
+	display: inline-block;
+	width: 13px;
+	height: 13px;
+	position: absolute;
+	left: 0;
+	bottom: 1px;
+	background:url(../images/radio.png) no-repeat left top;
+}
+.form-type-radio label:before {
+	border-radius: 8px;
+}
+.form-type-checkbox label {
+	display: inline-block;
+	cursor: pointer;
+	position: relative;
+	padding-left: 20px;
+	margin-right: 1px;
+	font-size: 13px;
+	width:auto !important;
+}
+.form-type-checkbox input[type=checkbox], input[type=checkbox] {
+	display: none;
+}
+.form-type-checkbox label:before {
+	content: "";
+	display: inline-block;
+	width: 13px;
+	height: 13px;
+	position: absolute;
+	left: 0;
+	bottom: 1px;
+	background:url(../images/chech1.png) no-repeat left top;
+}
+.form-type-checkbox label:before {
+	height: 17px;
+	width: 16px;
+}
+.form-type-checkbox input[type="checkbox"]:checked + label:before {
+	background: url("../images/chech_hover1.png") no-repeat scroll left top transparent;
+	color: #29ABE2;
+	font-size: 15px;
+	line-height: 15px;
+	text-align: center;
+}
+
+
+:root .form-type-select, :root .form-type-select select, :root .form-type-select::after, :root .css3-selectbox::before {
+ display: inline-block;
+ vertical-align: top;
+ width: auto;
+}
+
+:root .form-type-select::after, :root .form-type-select::before {
+ content: "";
+ -moz-pointer-events: none;
+ -webkit-pointer-events: none;
+ pointer-events: none;
+}
+
+:root .form-type-select, :root .form-type-select::after {
+}
+
+@media screen and (-webkit-min-device-pixel-ratio:0) {
+	:root .form-type-select select { padding:3px 5px 3px 3px !important;}
+}
+
+:root .form-type-select select {
+	margin: 0;
+	padding:1px 5px 0 3px;
+	padding:2px 0px 4px 0px\9 !important;
+	border: 0;
+	background: transparent;
+	font: normal 11px/18px "Segoe UI", Arial, Sans-serif;
+	outline: none;
+	border: 1px solid #DDDDDD;
+	background:#fff;
+	min-width:60px;
+}
+:root .form-type-select option {
+	border:0px solid #ededed;
+	padding:3px;
+}
+:root .form-type-select {
+	overflow: hidden;
+	cursor: pointer;
+	position: relative;
+}
+
+:root .form-type-select::before {
+ background: url("../images/select.png") no-repeat scroll left top transparent;
+ height: 22px;
+ position: absolute;
+ right: 3px;
+ right: 4px\9 !important;
+ top: 1px;
+ width: 28px;
+ z-index: 9999;
+ 
+}
+
+:root .form-type-select::after {
+ position: relative;
+ left: 1px;
+ width: 16px;
+ margin: 0 0 0 -17px;
+ box-shadow: -1px 0 0 1px #919191 inset;
+}
+
+:root .form-type-select:hover::before {
+ border-top-color: #fff;
+}

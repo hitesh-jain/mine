@@ -1,0 +1,4 @@
+name = Get Quotation
+description = Module captures members quotation for policies.
+package = CHSI
+core = 7.x

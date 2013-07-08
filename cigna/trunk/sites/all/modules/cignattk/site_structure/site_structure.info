@@ -1,0 +1,8 @@
+name = Site Structure
+description = Defines all the site internal structure including the common blocks and other common region handling.
+package = CHSI
+dependencies[] = block
+dependencies[] = taxonomy
+dependencies[] = menu
+version = 1.1
+core = 7.x

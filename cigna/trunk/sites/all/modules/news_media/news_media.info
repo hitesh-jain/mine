@@ -1,0 +1,4 @@
+name = News & Media
+description = Shows the News & Media content. 
+package = CHSI
+core = 7.x

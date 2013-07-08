@@ -1,0 +1,146 @@
+<?php
+
+
+function health_wellness_permission()
+{
+    return array(
+        'show health wellness' =>  array(
+            'title' => t('Show health and wellness'),
+        ),
+		'administrator health wellness'=>array(
+		'title' => t('Admin Health & Wellness'),
+	),
+    );
+}
+function health_wellness_node_info() {
+  return array(
+    'health_wellness' => array(
+      'name' => t('Health wellness'),
+      'base' => 'health_wellness',
+      'description' => t('A Health and Wellness content type'),
+      'has_title' => TRUE,
+      'title_label' => t('Health and wellness title'),
+      'locked' => FALSE,
+    ),
+  );
+}
+function health_wellness_form($node,$form_state)
+{
+    $type = node_type_get_type($node);
+    $form['title'] = array(
+		'#type' => 'textfield',
+		'#title' => check_plain($type->title_label),
+		'#default_value' => !empty($node->title) ? $node->title : '',
+		'#description' => t('Upto 128 characters.'), 
+		'#required' => TRUE, 
+    );
+    return $form;
+}
+function health_wellness_menu(){
+    
+      $items['health-wellness'] = array(
+        'title' =>t('Health & Wellness'),
+        'description' => 'Health & Wellness',
+        'page callback' => 'list_health_wellness',
+        'access arguments' => array('show health wellness'),
+    );
+	 $items['admin/list/health-wellness'] = array(
+		'title' => 'Health & Wellness Listing',
+		'page callback' => 'drupal_get_form',
+		'page arguments'=>array('admin_list_health_wellness'),
+		'access arguments' => array('administrator health wellness'),
+		
+	);
+    return $items;
+
+}
+function list_health_wellness(){
+    
+    
+     return theme('health_wellness');
+    
+}
+function health_wellness_theme(){
+    
+    return array(
+        'health_wellness'=>array(
+            'render element' => 'element',
+            'variables' => array('health_wellness' => NULL),
+            'template'=>'health-wellness'
+        
+        ),
+    );
+}
+function template_preprocess_health_wellness(&$variables){
+    
+    global $language,$base_url,$theme;    
+    // get recent health and wellness post
+    $variables['recent_post'] = array();
+    
+    $recent_node = db_select('node','n')
+            ->fields('n')
+            ->condition('status',1,'=')
+            ->condition('type','health_wellness','=')
+            ->orderBy('nid','DESC')
+            ->range(0,1)
+            ->execute()
+            ->fetchAssoc();
+    $recent_post = node_load($recent_node['nid']);
+    //dpr($recent_node);die;
+    $variables['recent_post'] = $recent_post;
+    $term = taxonomy_term_load($recent_post->field_hwcategory['und']['0']['tid']);
+    $variables['recent_post']->tname = $term->name;
+    
+    
+    $variables['posts'] = array();
+    //get recent post from remaing all categories
+    $result = db_query("SELECT node.title,taxonomy_index.tid,node.nid,node.type FROM node
+                        INNER JOIN taxonomy_index ON node.nid = taxonomy_index.nid
+                        WHERE node.type = 'health_wellness' AND node.status = 1
+                        GROUP BY taxonomy_index.tid
+                        ORDER BY node.nid DESC
+                        LIMIT 0, 4");
+    //dpr($result);die;
+    foreach($result as $post){
+        $variables['posts'][] = node_load($post->nid);
+    }
+
+    // render most recent post
+    $variables['health_wellness'] = array();
+	$variables['health_wellness_pager'] = '';
+    
+    $query=db_select('node','n')->extend('PagerDefault')->limit(5);
+    $query->fields('n',array('nid'))
+          ->condition('n.type','health_wellness')
+          ->condition('n.status',1);
+          
+    $results=$query->execute();
+    foreach($results as $node_value){
+        
+            $node=node_load($node_value->nid);
+        
+    $variables['health_wellness'][$node_value->nid]=$node;
+    //dpr($node);exit;    
+    }
+    $variables['health_wellness_pager'] = theme('pager');
+    
+
+}
+
+/**
+ * Implementation hook_view_alter()
+ */
+function health_wellness_node_view_alter(&$build){
+    
+  if($build['#view_mode'] == 'full' && $build['#bundle'] == 'health_wellness'){
+	$build['#post_render'][] = '_health_wellness_node_post_render';
+  }
+}
+
+function _health_wellness_node_post_render($content,$elements){
+    
+        $content.= l(t('&laquo &nbsp;&nbsp;&nbsp;Back to Health & Wellness'),'health_wellness',array('attributes'=>array('class'=>array('health_wellness_link')),'html' => TRUE));
+        
+        return $content;
+    
+}

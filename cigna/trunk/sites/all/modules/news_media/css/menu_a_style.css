@@ -1,0 +1,164 @@
+#side a {
+	display:block;
+	border-width:0 0 1px;
+	border-color:#445;
+	color:#f0f0f0
+}
+#side a:hover, #side a:active, #side a:focus {
+	background-color:#334
+}
+/* --- Accordion --- */
+.js #main .accordion {
+	visibility:hidden
+}
+.js #side .accordion {
+	display:none
+}
+.accordion {
+	margin:0;
+	padding:0 10px
+}
+.accordion li {
+	list-style-type:none
+}
+.accordion li.last-child {
+	margin-left:19px;
+	list-style-type:disc
+}
+#side ul.accordion ul {
+	margin:0;
+	padding:0 0 0 20px;
+}
+.accordion .outer {
+}
+.accordion .inner {
+	margin-bottom:0;
+	padding:.5em 0px 1em;
+	position:relative;
+	overflow:hidden
+}
+
+.accordion .inner ul li {
+    border-bottom: 1px solid #B3B3B3;
+    border-top: 1px solid #B3B3B3;
+    float: left;
+    width: 100%;
+}
+
+#news-media h2.entry-title{ border-bottom:1px solid #b3b3b3; margin-bottom:10px;}
+.accordion .inner div{line-height: 20px; float:left; width:100%; padding-left:6px;}
+.accordion .inner ul{ padding:0px;}
+.accordion .inner .inner {
+	padding-bottom:0
+}
+
+.accordion .inner div a { text-transform:uppercase;}
+
+.accordion .h {
+	margin:0 0 1px;
+	padding:0px;
+} /* vertical padding instead of vertical margin (ie8) */
+.accordion p {
+}
+
+
+/*  
+  Add styles for all links in the 'accordion':
+.accordion a {...}
+*/    
+
+a.trigger {
+	display:block;
+	padding-left:20px !important;
+	background:#29abe2 url(plus.gif) no-repeat right;
+	font-weight:700;
+	color:#fff;
+}
+a.trigger.open {
+	background:#29abe2 url(minus.gif) no-repeat right;
+	color:#fff;
+}
+.last-child a.trigger {
+	padding-left:1px;
+	background-image:none;
+	font-weight:normal
+}
+#main a.trigger {
+	padding-bottom:5px;
+	padding-top:7px;
+	height:30px;
+	padding-left:0px;
+}
+#news-media ul li h5 a.trigger.open {
+	background: url(arrow_d.jpg) no-repeat right !important;
+	font-weight:bold;
+	text-transform:uppercase;
+	text-decoration:none;
+	color:#808080;
+	padding-top:0px;
+	padding-right: 22px;
+	font-size:14px !important;
+	float:left;
+	padding-left:0px;
+	margin-top:3px;
+}
+#news-media ul li h5 a.trigger {
+	background: url(arrow_up.jpg) no-repeat right !important;
+	font-weight:bold;
+	text-transform:uppercase;
+	text-decoration:none;
+	color:#808080;
+	padding-top:0px;
+	padding-right: 22px;
+	font-size:14px !important;
+	float:left;
+	padding-left:0px;
+	margin-top:3px;
+}
+.faqdata ul li h4 a.trigger.open {
+	background: url(arrow_d1.jpg) no-repeat right top !important;
+	padding-left:0px;
+	height: 33px !important;
+	padding-top: 8px !important;
+}
+.faqdata ul li h4 a.trigger {
+	background: url(arrow_up1.jpg) no-repeat right top !important;
+	padding-left:0px;
+	height: 33px !important;
+	padding-top: 8px !important;
+}
+.disclaimersac ul li {
+	border-bottom: 1px dotted #bbbaba !important;
+}
+
+.faqdata ul li {
+	border-bottom: 1px solid #bbbaba !important;
+}
+
+.disclaimersac ul li h4 a.trigger.open {
+	background: url(arrow_d1.jpg) no-repeat right top !important;
+	padding-left:0px;
+	height: 33px !important;
+	padding-top: 8px !important;
+}
+.disclaimersac ul li h4 a.trigger {
+	background: url(arrow_up1.jpg) no-repeat right top !important;
+	padding-left:0px;
+	height: 33px !important;
+	padding-top: 8px !important;
+}
+#main a.trigger.open {
+	border-color:#dadada;
+	padding-left:0px;
+	padding-top:7px;
+	padding-bottom:5px;
+	height:30px;
+}
+#main a:hover.trigger.open, #main a:focus.trigger.open, #main a:active.trigger.open {
+	border-color:#bcd
+}
+#side a.active {
+	font-weight:700;
+	color:#f72;
+	text-decoration:none
+}

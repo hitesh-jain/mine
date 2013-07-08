@@ -1,0 +1,114 @@
+<?php
+
+/**
+ * Implements hook_install()
+ * 
+ */
+
+function news_media_install(){
+    
+    
+    global $base_url;
+    
+    $news_media_dir = $base_url.'/sites/default/files/news_media';
+    if(!is_dir($news_media_dir))
+    {
+	   @drupal_mkdir('public://news_media');
+    }
+    variable_set('news_media','/sites/default/files/news_media/');
+    node_types_rebuild();
+    $types=node_type_get_types();
+    node_add_body_field($types['news_media']);
+    foreach(_news_media_installed_fields() as $field_name=>$field){
+        
+            if(!field_info_field($field_name)){
+
+                    field_create_field($field);
+            }
+    }
+    foreach(_news_media_installed_instances() as $instance_name=>$instance){
+        
+            if(!field_info_instance($instance['entity_type'],$instance['field_name'],$instance['bundle'])){
+                
+                field_create_instance($instance);
+            }
+    }
+}
+/**
+ *
+ * 
+ */
+function _news_media_installed_fields(){
+    
+    return array(
+        'news_author'=>array(
+            'field_name'=>'news_author',
+            'cardinality' => 1,
+            'type'=>'text',
+        )
+    );
+}
+function _news_media_installed_instances(){
+    
+    return array(
+        'news_author'=>array(
+            'field_name'=>'news_author',
+            'entity_type'=>'node',
+            'bundle'=>'news_media',
+            'label'=> 'News Author',
+            'widget' => array(
+                'type' => 'text_textfield',
+            ), 
+        )
+    );   
+}
+/**
+ * 
+ * Implements hook_uninstall()
+ * 
+ */
+function news_media_uninstall(){
+    
+    global $base_url;
+	$sql = 'SELECT nid FROM {node} n WHERE n.type = :type';
+	$result = db_query($sql, array(':type' => 'news_media'));
+	$nids = array();
+	foreach ($result as $row) {
+	  $nids[] = $row->nid;
+	}
+    // Delete all the nodes at once
+	node_delete_multiple($nids);
+    
+    foreach (array_keys(_news_media_installed_fields()) as $field) {
+        field_delete_field($field);
+    }  
+    $instances = field_info_instances('node', 'news_media');
+    foreach ($instances as $instance_name => $instance) {
+        field_delete_instance($instance);
+    } 
+    
+    variable_del('news_media');
+    @drupal_rmdir('public://catalog');
+    // Delete our content type.
+    node_type_delete('job_post');
+    // Purge all field information.
+    field_purge_batch(1000);
+    
+    
+    
+    
+    //foreach(_news_media_installed_fields() as $field_name=>$field){
+//            
+//        if(!field_info_field($field_name)){
+//            field_delete_field($field_name); 
+//        }
+//    }
+   // foreach(_news_media_installed_instances() as $instance_name=>$instance){
+//        
+//        if(!field_info_instance($instance['entity_type'],$instance['field_name'],$instance['bundle'])){
+//                field_delete_instance($instance);
+//            }
+//    }
+
+    
+}

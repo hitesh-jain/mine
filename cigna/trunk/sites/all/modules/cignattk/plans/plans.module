@@ -1,0 +1,2386 @@
+<?php
+/**
+ * Implements hook_init
+ */
+function plans_init(){
+    
+    drupal_session_start();
+    drupal_add_js(drupal_get_path('module','plans').'/js/plans.js');
+}
+ 
+ 
+/**
+ * 
+ * Implemets hook_menu
+ * 
+ */
+function plans_menu(){
+    $items = array();
+    $items['plan'] = array(
+        'title' => 'Plans',
+        'page callback' => 'list_plans',
+        'access callback' => TRUE,
+        'type' => MENU_CALLBACK
+    );
+    $items['plans/indemnity-benefit'] = array(
+        'title' => 'Here are the Cigna-TTk plans you wanted to view',
+        'page callback' => 'indemnity_plans',
+        'access callback' => TRUE,
+        'type' => MENU_CALLBACK
+    );
+    $items['plans/fixed-benefit'] = array(
+        'title' => 'Here are the Cigna-TTk plans you wanted to view',
+        'page callback' => 'fixed_benefit',
+        'access callback' => TRUE,
+        'type' => MENU_CALLBACK
+    );
+    $items['plans/compare-plans'] = array(
+        'title' => '',
+        'page callback' => 'compare_plans',
+        'access callback' => TRUE,
+        'type' => MENU_CALLBACK
+    );
+    $items['plans/calculate-premium'] = array(
+        'title' => 'Here are the Cigna-TTk plans you wanted to view',
+        'page callback' => 'calculate_premium',
+        'access callback' => TRUE,
+        'type' => MENU_CALLBACK
+    );
+     $items['plans/get-base-premium/add'] = array(
+        'page callback' => '_plan_get_base_premium_add',
+        'access callback' => TRUE,
+        'type' => MENU_CALLBACK
+    );
+    $items['plans/ajax/sum_insured'] = array(
+        'page callback' => '_plan_ajax_sum_insured',
+        'access callback' => TRUE,
+        'type' => MENU_CALLBACK
+    );
+    return $items;
+}
+
+function _plan_get_base_premium_add(){
+    
+    global $user;
+    $values=$_POST;
+    
+    if($user->uid==0){
+        
+        if(isset($_SESSION['guestuser'])){
+        
+            $guestuser=$_SESSION['guestuser'];
+         }
+    }
+    
+    // For Fetching quote related details for particular quote_id.
+    $quote_no=db_select('get_quote','g')
+            ->fields('g',array('initial_quote_no','basepremium','finalpremium','total_premium'))
+            ->condition('g.qid',$values['quote_id'])
+            ->execute()->fetchAssoc();
+            
+   if(empty($quote_no['finalpremium'])){
+    
+        $premium=$quote_no['total_premium'];
+            
+   }else if(!empty($quote_no['finalpremium'])){
+    
+        $premium=$quote_no['finalpremium'];
+   }
+   
+   // For Fetching quote addons from table quote_addons .
+   $result=db_select('quote_addons','q')
+                    ->fields('q')
+                    ->condition('q.qid',$values['quote_id'])
+                    ->condition('q.productId',$values['oId'])
+                    ->execute()->fetchAssoc();
+                     
+    //Checking if ADD is clicked or REMOVE by setting adAddon/rmAddon in ajax request.                 
+    if($values['adAddon']){
+            
+        $inserted=db_insert('quote_stored_addon')
+            ->fields(array(
+                'initial_quote_no'=>$quote_no['initial_quote_no'],
+                'qid'=>$values['quote_id'],
+                'uid'=>empty($user->uid) ? $guestuser->uid : $user->uid,
+                'oid'=>$values['oId'],
+                'premium'=>$result['basePremium'],
+            ))
+            ->execute();
+               
+    // Updating finalPremium for that quote.
+       db_update('get_quote')
+       ->fields(array(
+            'finalpremium'=>(double)($premium + $result['basePremium']),
+       ))
+       ->condition('qid',$values['quote_id'])
+       ->execute();
+       
+       echo number_format(($premium + $result['basePremium']));exit;
+       
+    }else if($values['rmAddon']){
+        
+        db_delete('quote_stored_addon')
+            ->condition('qid',$values['quote_id'])
+            ->condition('oid',$values['oId'],'LIKE')
+            ->execute();
+            
+        db_update('get_quote')
+            ->fields(array(
+                'finalpremium'=>(double)($premium - $result['basePremium']),
+            ))
+            ->condition('qid',$values['quote_id'])
+            ->execute();
+            
+        echo number_format(($premium - $result['basePremium']));exit;    
+    }
+    exit;
+}
+
+/**
+ * 
+ * Ajax Callback trigger when sum insured dropdown is changed.
+ * @return
+ * Base-premium for changed sum_insured value.
+ * 
+ */
+ function _plan_ajax_sum_insured(){
+    
+    $post_values=$_POST;
+    
+    //dpr($post_values);exit;
+    
+    global $product_conf;
+    
+    if(!empty($post_values)){
+        
+        $sumInsured=$post_values['sumInsured'];
+        $tenure=$post_values['tenure'];
+        $qid=$post_values['qid'];
+        $planid=$post_values['planId'];
+        $option_cd=$post_values['planoptioncd'];
+    }
+    if($post_values['tenure_status']){
+    
+        $changed_premium=_plan_change_tenure($sumInsured,$qid,$planid,$tenure);    
+        echo $changed_premium;
+        exit;
+    }else{
+        $changed_premium=_plan_change_suminsured($sumInsured,$qid,$planid,$option_cd);
+        echo $changed_premium;
+        exit;
+    }
+    exit;
+}
+/**
+  *
+  * 
+  */
+function list_plans(){
+   return theme('plan_lists');
+ }
+ 
+ /**
+  * 
+  * Implement hook_theme;
+  */
+function plans_theme(){
+    return array(
+        'plan_lists' => array(
+            'variables' => array('node' => NULL),
+            'template'  => 'plan-lists',
+        ),
+        'indemnity_plans_list' => array(
+            'variables' => array('node'=> NULL),
+            'template'  => 'indemnity-plans'
+        ),
+        'fixed_benefit_list' => array(
+            'variables' => array('node' => NULL),
+            'template'  => 'fixed-benefit-plans'
+        ),
+        'plan_suggestion_list' => array(
+            'variables' => array('node' => NULL),
+            'template'  => 'plan-suggestions' 
+        ),
+    );
+}
+  /**
+   * 
+   * template preprocess 
+   * 
+   */
+function template_preprocess_plan_lists(&$variables){
+        // get all categories & plans.
+        $plan_categories=taxonomy_vocabulary_machine_name_load('plans');
+        $categories=taxonomy_get_tree($plan_categories->vid);
+        foreach($categories as $categoty){
+            $plan_nids = taxonomy_select_nodes($categoty->tid);
+            $categoty->url_alias=drupal_get_path_alias('taxonomy/term/'.$categoty->tid, $path_language = NULL);
+            $categoty->plans = node_load_multiple($plan_nids);
+            $variables['categories'][] = $categoty;
+        }
+}
+   /**
+    * 
+    * 
+    */
+function indemnity_plans(){
+        return theme('indemnity_plans_list');
+}
+    /**
+   * 
+   * template preprocess 
+   * 
+   */
+function template_preprocess_indemnity_plans_list(&$variables){
+    // get all categories & plans.
+    $plan_categories=taxonomy_vocabulary_machine_name_load('plans');
+    $categories=taxonomy_get_tree($plan_categories->vid);
+    foreach($categories as $category){
+        $plan_nids = taxonomy_select_nodes($category->tid);
+        $category->plans = node_load_multiple($plan_nids);
+        $variables['categories'][] = $category;
+    }
+}
+/**
+* 
+*/
+function fixed_benefit(){
+    return theme('fixed_benefit_list');
+}
+
+/**
+ * 
+ */
+function template_preprocess_fixed_benefit_list(&$variables){
+    
+    $plan_categories=taxonomy_vocabulary_machine_name_load('plans');
+    
+    $categories=taxonomy_get_tree($plan_categories->vid);
+    foreach($categories as $categoty){
+        $plan_nids = taxonomy_select_nodes($categoty->tid);
+        $categoty->plans = node_load_multiple($plan_nids);
+        $variables['categories'][] = $categoty;
+    }
+}
+
+/**
+* 
+* 
+*/
+function calculate_premium(){
+    
+    return theme('plan_suggestion_list');
+    
+}
+
+/**
+* 
+* Implementing template_preprocess_THEMENAME()
+* @param
+* $variables
+* 
+*/
+function template_preprocess_plan_suggestion_list(&$variables){
+    
+    
+    global $user,$sforce; 
+    
+    if($user->uid==0){
+        
+        if(isset($_SESSION['guestuser'])){
+        
+            $guestuser=$_SESSION['guestuser'];
+         }
+    }else{
+        $guestuser=$user;
+    }
+    $ssid=session_id();
+    unset($_SESSION['quick_quote']);
+    
+    /*
+    if(isset($_SESSION['quick_quote_data'])){
+        
+       // $values=$_SESSION['quick_quote'];
+    }else{
+        drupal_not_found();
+        drupal_access_denied();exit;
+    }*/
+   
+    // Initially when the new quote is taken and when  the quote_no is not assigned to session quick_quote variable.
+   $quote_generation=1;
+   
+   if(isset($_SESSION['quick_quote_data']) && empty($_SESSION['modified_return_quote_data_active'])){
+    
+           foreach($_SESSION['quick_quote_data'] as $key=>$values){
+            
+            if(isset($values) && $values['flag'] && empty($values['quote_no'])){
+                
+               $query=db_select("get_quote",'q')
+                        ->fields('q',array('initial_quote_no'))
+                        ->range(0,1)
+                        ->orderBy('q.qid','DESC');                  
+                $internal_id=$query->execute()->fetchField();
+              
+              if($quote_generation){
+                
+                if(empty($internal_id)){
+                    $id='Q1';     // Initially assigning intial_quote_no .    
+                }else{
+                    $value= filter_var($internal_id, FILTER_SANITIZE_NUMBER_INT); // Function used for separating numbers from alphanumeric string.     
+                    $id='Q'.($value+1);
+                 }
+                 $_SESSION['user_initial_quote_no']=$id;
+              }                 
+                $quote_generation=0;
+                if(!empty($_SESSION['return_quote_data'][$key])){
+                    
+                    $session_response=!empty($_SESSION['return_quote_data'][$key]->return->listofquotationTO) ? $_SESSION['return_quote_data'][$key]->return->listofquotationTO : '';
+                                       
+                      $result= db_insert('get_quote') 
+                               ->fields(array(
+                                    'uid'=>$guestuser->uid,
+                                    'initial_quote_no'=>$id,
+                                    'status'=>1,
+                                    'sid'=>$ssid,
+                                    'email_id'=>!empty($values['email_id']) ? $values['email_id'] : '',
+                                    'no_adults'=>!empty($values['no_adults']) ? $values['no_adults'] : '',
+                                    'no_childs'=>!empty($values['no_childs']) ?  $values['no_childs'] : 0,
+                                    'city_id'=>!empty($values['region']) ? $values['region'] : '',
+                                    'sum_insured'=>!empty($values['sum_insured']) ? $values['sum_insured'] : '',
+                                    'dob'=>!empty($values['dob']) ? $values['dob'] : '',
+                                    'basepremium'=>$_SESSION['return_quote_data'][$key]->return->listofquotationTO->quotationProductDOList->basePremium,
+                                    'created'=>!empty($values['created']) ? $values['created'] : '',
+                                    'modify'=>!empty($values['modify']) ? $values['modify'] : '',
+                                    'agentId'=>$session_response->agentId,
+                                    'campaignCd'=>$session_response->campaignCd,
+                                    'channelId'=>$session_response->channelId,
+                                    'parentProductId'=>$session_response->parentProductId,
+                                    'parentProductVersion'=>$session_response->parentProductVersion,
+                                    'policyType'=>$session_response->policyType,
+                                    'productFamilyId'=>$session_response->productFamilyId,
+                                    'productId'=>$session_response->productId,
+                                    'productPlanOptionCd'=>$session_response->productPlanOptionCd,
+                                    'quotationDt'=>$session_response->quotationDt,
+                                    'quoteTypeCd'=>$session_response->quoteTypeCd,
+                                    'saveFl'=>$session_response->saveFl,
+                                    'tenure'=>$session_response->tenure,
+                                    'total_premium'=>$session_response->totPremium,
+                                    'gender'=>$values['gender'],
+                                    'hd_option'=>$values['hd_option'],
+                                    'hd_option_price'=>$values['hd_option_price'],
+                                    'planid'=>$values['planid'],
+                               ))
+                               ->execute();
+                               $_SESSION['user_quote_no']=$result;
+                               
+                    if(!empty($session_response->quotationChargeDOList)){
+                        
+                        foreach($session_response->quotationChargeDOList as $charge){
+                    
+                             db_insert('quotationchargedolist')
+                                    ->fields(array(
+                                        'initial_quote_no'=>$id,
+                                        'chargePercentage'=>$charge->chargePercentage,
+                                        'chargeClassCd'=>$charge->chargeClassCd,
+                                        'chargeAmount'=>$charge->chargeAmount,
+                                        'qid'=>$result,
+                                    ))
+                                    ->execute();                        
+                        }  
+                    }
+                    
+                 if(!empty($session_response->quotationProductDOList)){
+                        
+                        if(is_array($session_response->quotationProductDOList)){
+                            
+                             foreach($session_response->quotationProductDOList as $charge){
+                    
+                                 db_insert('quotationproductdolist')
+                                    ->fields(array(
+                                        'initial_quote_no'=>$id,
+                                        'basePremium'=>$charge->basePremium,
+                                        'discount'=>$charge->discount,
+                                        'extraPremium'=>$charge->extraPremium,
+                                        'productId'=>$charge->productId,
+                                        'productPlanOptionCd'=>$charge->productPlanOptionCd,
+                                        'productTypeCd'=>$charge->productTypeCd,
+                                        'productVersion'=>$charge->productVersion,
+                                        'sumInsured'=>$charge->sumInsured,
+                                        'qid'=>$result,
+                                    ))
+                                    ->execute();
+                                                            
+                             }
+                        }else if(is_object($session_response->quotationProductDOList)){
+                            
+                            db_insert('quotationproductdolist')
+                                    ->fields(array(
+                                        'initial_quote_no'=>$id,
+                                        'basePremium'=>$session_response->quotationProductDOList->basePremium,
+                                        'discount'=>$session_response->quotationProductDOList->discount,
+                                        'extraPremium'=>$session_response->quotationProductDOList->extraPremium,
+                                        'productId'=>$session_response->quotationProductDOList->productId,
+                                        'productPlanOptionCd'=>$session_response->quotationProductDOList->productPlanOptionCd,
+                                        'productTypeCd'=>$session_response->quotationProductDOList->productTypeCd,
+                                        'productVersion'=>$session_response->quotationProductDOList->productVersion,
+                                        'sumInsured'=>$session_response->quotationProductDOList->sumInsured,
+                                        'qid'=>$result,
+                                    ))
+                                ->execute();    
+                        }
+                    }
+                    
+                } 
+                
+                 $query=db_select('get_quote','q')
+                    ->fields('q',array('qid'))
+                    ->orderBy('qid','DESC')
+                    ->range(0,1);
+                $latest_qid =$query->execute()->fetchField();
+                
+                /*           
+                $_SESSION['no_of_quotes'][$latest_qid]=array(
+                        'uid'=>$values['uid'],
+                        'sid'=>$values['sid'],
+                        'status'=>1,
+                        'no_adults'=>$values['no_adults'],
+                        'no_childs'=>$values['no_childs'],
+                        'city_id'=>$values['region'],
+                        'sum_insured'=>$values['sum_insured'],
+                        'dob'=>$values['dob'],
+                        'quote_no'=>$latest_qid,
+                        'initial_quote_no'=>$id,
+                        'initial_basePremium'=>$session_response->quotationProductDOList->basePremium,
+                        'created'=>$values['created'],
+                        'modify'=>$values['modify'],
+                        'tenure'=>$values['tenure'],
+                        'flag'=>0, 
+                );*/
+                
+                $_SESSION['quick_quote_data'][$key]['quote_no']=$latest_qid;
+                $_SESSION['quick_quote_data'][$key]['initial_quote_no']=$id;
+                $_SESSION['quick_quote_data'][$key]['flag']=0;
+                
+                if(isset($_SESSION['people_details'])){
+                    
+                    $_SESSION['people_details']['quote_no']=$latest_qid;
+                    $_SESSION['people_details']['initial_quote_no']=$qid;
+                    $data=$_SESSION['people_details'];
+                }
+                $sub_order=0;
+                if(isset($data['adults'])){
+                    
+                    $ad_status=0;
+                    foreach($data['adults'] as $key=>$adult){
+                        
+                         if(empty($ad_status)){
+                        
+                            if($adult['tobacco'] || $adult['alcohol'] || $adult['cigarette']){
+                            
+                                    if($adult['tobacco_consumption'] || $adult['alcohol_consumption'] || $adult['cigarette_consumption']){
+                                        
+                                        $ad_status=2;   
+                                    }else if(empty($adult['tobacco_consumption']) && empty($adult['alcohol_consumption']) && empty($adult['cigarette_consumption'])){
+                                        $ad_status=1;    
+                                }
+                            }
+                        }
+                           
+                           $day=$adult['day'];
+                           $month=$adult['month'];
+                           $year=$adult['year'];
+                           $ad_dob=strtotime("$day-$month-$year");
+                           $sub_order++;
+                           
+                        $db_insert=db_insert('get_quote_people_details')
+                            ->fields(array(
+                                'uid'=>$guestuser->uid,
+                                'sid'=>$data['sid'],
+                                'quote_id'=>$data['quote_no'],
+                                'initial_quote_no'=>$id,
+                                'people_type'=>'adult',
+                                'ordering'=>$key,
+                                'sub_ordering'=>$sub_order,
+                                'gender'=>$adult['gender'],
+                                'dob'=>$ad_dob,
+                                'tobacco'=>$adult['tobacco'],
+                                'alcohol'=>$adult['alcohol'],
+                                'cigarette'=>$adult['cigarette'],
+                                'tobacco_consumption'=>$adult['tobacco_consumption'],
+                                'alcohol_consumption'=>$adult['alcohol_consumption'], 
+                                'cigarette_consumption'=>$adult['cigarette_consumption'],
+                            ))
+                            ->execute();
+                    }   
+                }
+                
+                if(isset($data['childs'])){
+                    
+                     foreach($data['childs'] as $key=>$childs){
+                
+                           if(empty($ad_status)){
+                                
+                                $ch_status=0;
+                                
+                                if(empty($ch_status)){
+                                    
+                                    if($childs['tobacco'] || $childs['alcohol'] || $childs['cigarette']){
+                                
+                                        if($childs['tobacco_consumption'] || $childs['alcohol_consumption'] || $childs['cigarette_consumption']){
+                                                $ch_status=2;   
+                                        }else if(empty($childs['tobacco_consumption']) && empty($childs['alcohol_consumption']) && empty($childs['cigarette_consumption'])){
+                                        $ch_status=1;
+                                        }
+                                    }
+                                }
+                           }
+                           
+                           $day=$childs['day'];
+                           $month=$childs['month'];
+                           $year=$childs['year'];
+                           $ch_dob=strtotime("$day-$month-$year");
+                           $sub_order++;
+                           
+                       $db_result=db_insert('get_quote_people_details')
+                            ->fields(array(
+                                'uid'=>$guestuser->uid,
+                                'sid'=>$data['sid'],
+                                'quote_id'=>$data['quote_no'],
+                                'initial_quote_no'=>$id,
+                                'people_type'=>'child',
+                                'ordering'=>$key,
+                                'sub_ordering'=>$sub_order,
+                                'gender'=>$childs['gender'],
+                                'dob'=>$ch_dob,
+                                'tobacco'=>$childs['tobacco'],
+                                'alcohol'=>$childs['alcohol'],
+                                'cigarette'=>$childs['cigarette'],
+                                'tobacco_consumption'=>$childs['tobacco_consumption'],
+                                'alcohol_consumption'=>$childs['alcohol_consumption'], 
+                                'cigarette_consumption'=>$childs['cigarette_consumption'],
+                            ))
+                            ->execute();   
+                            
+                            //dpr($db_result);exit;
+                    }
+                }
+                if((isset($ad_status) && isset($ch_status)) && ($ad_status || $ch_status)){
+                    
+                        if($ad_status==1){
+                            
+                                $fn_status=1;
+                        }else if($ad_status==2){
+                            
+                            $fn_status=2;
+                            
+                        }else if($ch_status ==1){
+                            
+                            $fn_status=1;
+                            
+                        }else if($ch_status==2){
+                            $fn_status=2;
+                        }
+                 }else if(empty($ad_status) && empty($ch_status)){
+                    $fn_status=0;
+                 }
+                if(isset($fn_status) && isset($data['quote_no'])){
+                        
+                        db_update('get_quote')
+                        ->fields(array(
+                            'stp_status'=>$fn_status,
+                        ))
+                        ->condition('qid',$data['quote_no'])
+                        ->execute(); 
+                    }
+                
+                }
+             
+             }
+        }else if(isset($_SESSION['modified_return_quote_data_active']) &&  isset($_SESSION['modified_quick_quote'])){
+        
+            $values=$_SESSION['modified_quick_quote'];
+            
+            db_delete('get_quote')
+                ->condition('initial_quote_no',$_SESSION['user_initial_quote_no'])
+                ->execute();
+            
+            
+            foreach($_SESSION['modified_return_quote_data_active'] as $key=>$response){
+                
+                
+                $session_response=!empty($response->return->listofquotationTO) ? $response->return->listofquotationTO : '';
+             
+                    $result_id=db_insert('get_quote')
+                    ->fields(array(
+                        'uid'=>$guestuser->uid,
+                        'status'=>1,
+                        'initial_quote_no'=>$_SESSION['user_initial_quote_no'],
+                        'basepremium'=>$session_response->return->listofquotationTO->quotationProductDOList->basePremium,
+                        'finalpremium'=>NULL,
+                        'people_count'=>($values['no_adults'] + $values['no_childs']),
+                        'no_adults'=>$values['no_adults'],
+                        'no_childs'=>$values['no_childs'],
+                        'city_id'=>$values['region'],
+                        'sum_insured'=>$values['sum_insured'],
+                        'modify'=>$values['modify'],
+                        'agentId'=>$session_response->agentId,
+                        'campaignCd'=>$session_response->campaignCd,
+                        'channelId'=>$session_response->channelId,
+                        'parentProductId'=>$session_response->parentProductId,
+                        'parentProductVersion'=>$session_response->parentProductVersion,
+                        'policyType'=>$session_response->policyType,
+                        'productFamilyId'=>$session_response->productFamilyId,
+                        'productId'=>$session_response->productId,
+                        'productPlanOptionCd'=>$session_response->productPlanOptionCd,
+                        'quotationDt'=>$session_response->quotationDt,
+                        'quoteTypeCd'=>$session_response->quoteTypeCd,
+                        'saveFl'=>$session_response->saveFl,
+                        'tenure'=>$session_response->tenure,
+                        'gender'=>$values['gender'],
+                        'hd_option'=>$values['hd_option'],
+                        'hd_option_price'=>$values['hd_option_price'],
+                        'total_premium'=>$session_response->totPremium,
+                        'planid'=>$key,
+                    ))
+                    ->execute();
+              
+                    //$_SESSION['modified_qid'][$key]=$result_id;
+                    $_SESSION['user_quote_no']=$result_id;
+                    
+                    if(!empty($session_response->quotationChargeDOList)){
+                
+                        foreach($session_response->quotationChargeDOList as $charge){
+            
+                            $result= db_insert('quotationchargedolist')
+                                    ->fields(array(
+                                        'initial_quote_no'=>$_SESSION['user_initial_quote_no'],
+                                        'chargePercentage'=>$charge->chargePercentage,
+                                        'chargeClassCd'=>$charge->chargeClassCd,
+                                        'chargeAmount'=>$charge->chargeAmount,
+                                        'qid'=>$result_id,
+                                    ))
+                                    ->execute();                        
+                        }  
+                    } 
+            
+                                           
+                    if(!empty($session_response->quotationProductDOList)){
+                
+                        if(is_array($session_response->quotationProductDOList)){
+                            
+                             foreach($session_response->quotationProductDOList as $charge){
+                    
+                                 $result= db_insert('quotationproductdolist')
+                                    ->fields(array(
+                                        'initial_quote_no'=>$_SESSION['user_initial_quote_no'],
+                                        'basePremium'=>$charge->basePremium,
+                                        'discount'=>$charge->discount,
+                                        'extraPremium'=>$charge->extraPremium,
+                                        'productId'=>$charge->productId,
+                                        'productPlanOptionCd'=>$charge->productPlanOptionCd,
+                                        'productTypeCd'=>$charge->productTypeCd,
+                                        'productVersion'=>$charge->productVersion,
+                                        'sumInsured'=>$charge->sumInsured,
+                                        'qid'=>$result_id,
+                                    ))
+                                    ->execute();
+                                                            
+                             }
+                    }else if(is_object($session_response->quotationProductDOList)){
+                    
+                        $result= db_insert('quotationproductdolist')
+                                ->fields(array(
+                                    'initial_quote_no'=>$_SESSION['user_initial_quote_no'],
+                                    'basePremium'=>$session_response->quotationProductDOList->basePremium,
+                                    'discount'=>$session_response->quotationProductDOList->discount,
+                                    'extraPremium'=>$session_response->quotationProductDOList->extraPremium,
+                                    'productId'=>$session_response->quotationProductDOList->productId,
+                                    'productPlanOptionCd'=>$session_response->quotationProductDOList->productPlanOptionCd,
+                                    'productTypeCd'=>$session_response->quotationProductDOList->productTypeCd,
+                                    'productVersion'=>$session_response->quotationProductDOList->productVersion,
+                                    'sumInsured'=>$session_response->quotationProductDOList->sumInsured,
+                                    'qid'=>$result_id,
+                                ))
+                            ->execute();    
+                    }
+                } 
+            
+                if(isset($_SESSION['people_details'])){
+            
+                $_SESSION['people_details']['quote_id']=$result_id;
+                $data=$_SESSION['people_details'];
+                
+                }
+                if(isset($data['adults'])){
+                
+                    $sub_order=0;
+                    $ad_status=0;
+                    foreach($data['adults'] as $key=>$adult){
+                           
+                        if(empty($ad_status)){
+                        
+                            if($adult['tobacco'] || $adult['alcohol'] || $adult['cigarette']){
+                            
+                                    if($adult['tobacco_consumption'] || $adult['alcohol_consumption'] || $adult['cigarette_consumption']){
+                                        
+                                        $ad_status=2;   
+                                    }else if(empty($adult['tobacco_consumption']) && empty($adult['alcohol_consumption']) && empty($adult['cigarette_consumption'])){
+                                        $ad_status=1;    
+                                }
+                            }
+                        }
+                         
+                         $day=$adult['day'];
+                         $month=$adult['month'];
+                         $year=$adult['year'];
+                         $sub_order++; 
+                         $ad_up_dob=strtotime("$day-$month-$year");
+                           
+                            db_insert('get_quote_people_details')
+                            ->fields(array(
+                                'initial_quote_no'=>$_SESSION['user_initial_quote_no'],
+                                'uid'=>$data['uid'],
+                                'sid'=>$data['sid'],
+                                'quote_id'=>$data['quote_id'],
+                                'people_type'=>'adult',
+                                'ordering'=>$key,
+                                'sub_ordering'=>$sub_order,
+                                'gender'=>$adult['gender'],
+                                'dob'=>$ad_up_dob,
+                                'tobacco'=>$adult['tobacco'],
+                                'alcohol'=>$adult['alcohol'],
+                                'cigarette'=>$adult['cigarette'],
+                                'tobacco_consumption'=>$adult['tobacco_consumption'],
+                                'alcohol_consumption'=>$adult['alcohol_consumption'], 
+                                'cigarette_consumption'=>$adult['cigarette_consumption'],
+                            ))
+                            ->execute();   
+                    }
+                }
+                if(isset($data['childs'])){
+                    
+                     foreach($data['childs'] as $key=>$childs){
+                        
+                           if(empty($ad_status)){
+                                
+                                $ch_status=0;
+                                
+                                if(empty($ch_status)){
+                                    
+                                    if($childs['tobacco'] || $childs['alcohol'] || $childs['cigarette']){
+                                
+                                        if($childs['tobacco_consumption'] || $childs['alcohol_consumption'] || $childs['cigarette_consumption']){
+                                                $ch_status=2;   
+                                        }else if(empty($childs['tobacco_consumption']) && empty($childs['alcohol_consumption']) && empty($childs['cigarette_consumption'])){
+                                                $ch_status=1;
+                                        }
+                                    }
+                                }
+                           }
+                           
+                           $day=$childs['day'];
+                           $month=$childs['month'];
+                           $year=$childs['year'];
+                           $ch_up_dob=strtotime("$day-$month-$year");
+                           $sub_order++;
+                           
+                        db_insert('get_quote_people_details')
+                            ->fields(array(
+                                'initial_quote_no'=>$_SESSION['user_initial_quote_no'],
+                                'uid'=>$data['uid'],
+                                'sid'=>$data['sid'],
+                                'quote_id'=>$data['quote_id'],
+                                'people_type'=>'child',
+                                'ordering'=>$key,
+                                'sub_ordering'=>$sub_order,
+                                'gender'=>$childs['gender'],
+                                'dob'=>$ch_up_dob,
+                                'tobacco'=>$childs['tobacco'],
+                                'alcohol'=>$childs['alcohol'],
+                                'cigarette'=>$childs['cigarette'],
+                                'tobacco_consumption'=>$childs['tobacco_consumption'],
+                                'alcohol_consumption'=>$childs['alcohol_consumption'], 
+                                'cigarette_consumption'=>$childs['cigarette_consumption'],
+                            ))
+                            ->execute();   
+                    }
+                }
+            
+             if($ad_status || $ch_status){
+                
+                    if($ad_status==1){
+                            $fn_status=1;
+                    }else if($ad_status==2){
+                        $fn_status=2;
+                    }else if($ch_status ==1){
+                        
+                        $fn_status=1;
+                        
+                    }else if($ch_status==2){
+                        $fn_status=2;
+                    }
+             }else if(empty($ad_status) && empty($ch_status)){
+                $fn_status=0;
+             }
+            if(isset($fn_status)){
+                    
+                    db_update('get_quote')
+                    ->fields(array(
+                        'stp_status'=>$fn_status,
+                    ))
+                    ->condition('qid',$result_id)
+                    ->execute(); 
+            }    
+                
+         }
+               
+       }
+        /*
+            $_SESSION['no_of_quotes'][$values['quote_no']]['people_count']=($values['no_adults'] + $values['no_childs']);
+            $_SESSION['no_of_quotes'][$values['quote_no']]['no_adults']=$values['no_adults'];
+            $_SESSION['no_of_quotes'][$values['quote_no']]['no_childs']=$values['no_childs'];
+            $_SESSION['no_of_quotes'][$values['quote_no']]['region']=$values['region'];
+            $_SESSION['no_of_quotes'][$values['quote_no']]['sum_insured']=$values['sum_insured'];
+            $_SESSION['no_of_quotes'][$values['quote_no']]['modify']=$values['modify'];*/
+     
+     /*
+    if(isset($_SESSION['return_quote_data']) && empty($_SESSION['modified_return_quote_data_active'])){
+   
+       $rawPlans_list= $_SESSION['return_quote_data'];    
+          
+    }else if(isset($_SESSION['modified_return_quote_data_active'])){
+        
+        $rawPlans_list=$_SESSION['modified_return_quote_data_active'];
+    }*/
+    
+    $rawPlans_list=db_select('get_quote','q')
+                    ->fields('q')
+                    ->condition('q.initial_quote_no',$_SESSION['user_initial_quote_no'])
+                    ->condition('q.uid',$guestuser->uid)
+                    ->execute()->fetchAll();
+    
+    $plansIds = array();
+    
+    if(!empty($rawPlans_list)){
+    
+       foreach($rawPlans_list as  $rawPlansdata){
+     
+            $key=$rawPlansdata->planid;
+            
+            /*
+            if(isset($_SESSION['quick_quote_data']) && empty($_SESSION['modified_return_quote_data_active'])){
+                
+                $_SESSION['s_quote_no'][$key]=$_SESSION['quick_quote_data'][$key]['quote_no'];
+                
+            }else if(isset($_SESSION['modified_return_quote_data_active'])){
+                
+                $_SESSION['s_quote_no'][$key]=$_SESSION['modified_qid'][$key];
+            } */
+            /*
+            $rawPlans=db_select('quotationproductdolist','q')
+                ->fields('q')
+                ->condition('q.qid',$rawPlansdata->qid)
+                ->condition('q.productId',$rawPlansdata->productId)
+                ->execute()->fetchAssoc(); */
+                
+              
+              /*  
+            $listofquotationTO=db_select('get_quote','l')
+                ->fields('l')
+                ->condition('l.qid',$_SESSION['s_quote_no'][$key])
+                ->condition('l.planid',$key)
+                ->execute()->fetchAssoc(); 
+                
+           $sub_plan_id = db_query("SELECT f.entity_id FROM field_data_field_sub_plan_id f  inner join node n on n.nid=f.entity_id and n.status=1 where  f.field_sub_plan_id_value ='".$rawPlans['productId']."'")->fetchField();
+                
+            
+            $parentPlanId = db_query("SELECT field_related_plan_id_target_id as planId FROM {field_data_field_related_plan_id} WHERE entity_id = ".$sub_plan_id."")->fetchField();    */
+            
+            //dpr($parentPlanId);exit;
+            
+            $product[$key]= node_load($key);
+            $product[$key]->parentPlanId  = $key;
+            $product[$key]->sumInsured  = $rawPlansdata->sumInsured;
+            
+            $product[$key]->basePremium=$rawPlansdata->basePremium;
+            $product[$key]->total_premium=$rawPlansdata->total_premium;
+            
+            $result=db_select("field_data_field_related_plan_id","p")
+                    ->fields('p',array('entity_id'))
+                    ->condition('p.field_related_plan_id_target_id',$key)
+                    ->execute();
+                    
+            foreach($result as $subPlanId){
+                @$product[$key]->subplans[] = $subPlanId->entity_id;    
+            }
+            
+            $planoption=db_select('field_data_field_sub_plan_option','o');
+            $planoption->innerJoin('node','n','n.nid=o.field_sub_plan_option_target_id');
+            $planoption->innerJoin('field_data_field_plan_option_cd','p','p.entity_id=o.field_sub_plan_option_target_id');
+            $planoption->innerJoin('field_data_field_plan_option_cover_type','c','c.entity_id=o.field_sub_plan_option_target_id');
+            $planoption->innerJoin('field_data_field_si_value','s','s.entity_id=o.field_sub_plan_option_target_id');
+            
+            $planoption->fields('o',array('entity_id'))
+                        ->fields('n',array('title'))
+                        ->fields('c',array('field_plan_option_cover_type_value'))
+                        ->fields('p',array('field_plan_option_cd_value'));
+                        
+            $planoption->fields('s',array('field_si_value_value'))
+                        ->condition('o.entity_id',$product[$key]->subplans,'IN')
+                        ->condition('c.field_plan_option_cover_type_value',$rawPlansdata->policyType)
+                        ->orderBy('s.field_si_value_value','ASC')
+                        ->distinct();
+                                                             
+            $option=$planoption->execute()->fetchAll();
+            
+            $arr_res=array_unique_field($option);
+              
+            if(isset($option) && !empty($option)){
+              
+                $product[$key]->options=$arr_res;
+            }
+            
+            $product[$key]->no_adults=$rawPlansdata->no_adults;
+            $product[$key]->no_childs=$rawPlansdata->no_childs;
+            $product[$key]->tenure=$rawPlansdata->tenure;
+            $product[$key]->quote_id=$rawPlansdata->initial_quote_no;
+            
+       }
+       unset($_SESSION['quick_quote_data']);
+       unset($_SESSION['modified_return_quote_data_active']);
+       unset($_SESSION['return_quote_data']);
+    }
+    
+    $variables['plans'] = $product;
+}
+
+function get_plans_attributes($sub_plans=NULL,$nid=NULL){
+    
+    // Fetching attributes realted to plan
+    if(!empty($nid)){
+        
+            $attributes = db_query('SELECT * FROM uc_product_attributes WHERE nid in ('.$nid.')group by uc_product_attributes.aid');
+            foreach($attributes as $attribute){   
+                if($attribute->label!='screening')
+                    $attribs[] =$attribute;
+            }
+            $attribs = object_to_array($attribs);
+            array_sort_by_column($attribs,'ordering');
+            return $attribs;
+            
+                    
+    }else if(!empty($sub_plans)){
+        // Fetching attributes related to sub_plan
+        $attribs=array();
+        $sub_plans_ids = implode(',',$sub_plans);
+        $attributes = db_query('SELECT * FROM uc_product_attributes WHERE nid in ('.$sub_plans_ids.')group by uc_product_attributes.aid');
+        foreach($attributes as $attribute){
+            $attribs[] =$attribute;
+        }
+            $attribs = object_to_array($attribs);
+            array_sort_by_column($attribs,'ordering');
+            return $attribs;
+            
+    }
+}
+function get_plans_attributes_options($sub_plans,$nid,$aid){
+    
+   
+    // Fetching attributes related to plan
+    if(!empty($nid)){
+        $options = array();
+                $attributes_options = db_query('SELECT uc_product_options.*,uc_attribute_options.name FROM uc_product_options 
+                                        INNER JOIN uc_attribute_options ON uc_attribute_options.oid = uc_product_options.oid WHERE nid ='.$nid.' AND aid = '.$aid.' group by uc_attribute_options.oid');
+
+        foreach($attributes_options as $option){
+                $options[]= $option;
+        }
+        $options = object_to_array($options);
+        array_sort_by_column($options,'ordering');
+        return $options;
+        
+    }else if(!empty($sub_plans)){ // Fetching attributes related to sub plan
+            
+        $options = array();
+        $sub_plans_ids = implode(',',$sub_plans);
+        $attributes_options = db_query('SELECT uc_product_options.*,uc_attribute_options.name FROM uc_product_options 
+                                        INNER JOIN uc_attribute_options ON uc_attribute_options.oid = uc_product_options.oid WHERE nid in ('                                                .$sub_plans_ids.') AND aid = '.$aid.' group by uc_attribute_options.oid');
+        foreach($attributes_options as $option){$options[]= $option;}
+        $options = object_to_array($options);
+        array_sort_by_column($options,'ordering');
+        return $options;
+    }
+}
+
+function get_addons_key_featuers_count($nid){
+        
+      
+     $query=db_select('uc_product_options','p')
+            ->fields('p')
+            ->condition('p.nid',$nid)
+            ->execute();
+     $count=$query->rowCount();
+            
+     if(!empty($count)){
+        
+        return $count;
+     }else{
+        return 'No';
+     }    
+     /*   
+    $sub_plan_ids = array();
+    $node = node_load($nid);
+    foreach($node->field_sub_plan['und'] as $value){
+        
+        $sub_plan_ids[] = $value['target_id'];
+    }
+    $attributes = get_plans_attributes($sub_plan_ids,$nid);
+    foreach($attributes as $attribs){
+       if($attribs['label'] == 'ADD-ONS'){
+            $options[] = count(get_plans_attributes_options($sub_plan_ids,$nid,$attribs['aid']));
+        }
+    }
+    return $options[0];*/
+
+}
+function quote_details($quote_no){
+    
+    
+    $query=db_select('get_quote','q');
+    $query->innerJoin('field_data_field_plan_option_cd','c','c.field_plan_option_cd_value=q.productPlanOptionCd');
+    $query->fields('c',array('entity_id'))
+            ->fields('q')
+            ->condition('q.initial_quote_no',$quote_no);
+            
+    $result=$query->execute()->fetchAssoc();
+    if(!empty($result)){
+        
+        return $result;    
+        
+    }else{
+        return 0;
+    }
+}
+
+function quote_details_by_id($quote_id){
+    
+    $query=db_select('get_quote','q');
+    $query->innerJoin('field_data_field_plan_option_cd','c','c.field_plan_option_cd_value=q.productPlanOptionCd');
+    $query->fields('c',array('entity_id'))
+            ->fields('q')
+            ->condition('q.qid',$quote_id);
+            
+    $result=$query->execute()->fetchAssoc();
+    if(!empty($result)){
+        
+        return $result;    
+        
+    }else{
+        return 0;
+    }
+    
+}
+
+
+function location_details($city_id){
+    
+     $location=db_select("cities",'c')
+            ->fields('c')
+            ->condition('c.cid',$city_id)
+            ->execute()->fetchAssoc();
+    if(!empty($location)){
+        return $location;
+    }else{
+        return 0;
+    }
+}
+function addons_details($plan_option_id,$aid=NULL){
+    
+    if($aid){
+        $query=db_select('uc_product_options','u');
+        $query->innerJoin('uc_attribute_options','o','o.oid=u.oid');
+        $query->innerJoin('field_data_field_plan_option_cd','p','p.entity_id=u.nid');
+        
+        $query->addField('u','nid', 'plan_option_id');
+        $query->addField('u','planOptionCd', 'productid');
+        
+        $query->addField('p','field_plan_option_cd_value', 'plan_option_cd');
+        $query->addField('u','oid', 'option_id');
+        $query->fields('o',array('name','launchDt','longName','planId','productFamilyId','productId','productStatusCd','productVersion','shortName','versionName','withdrawDt','description','icon_name'))
+            ->condition('u.nid',$plan_option_id)
+            ->condition('o.aid',$aid);
+        
+    }else{
+        
+        $query=db_select('uc_product_options','u');
+        $query->innerJoin('uc_attribute_options','o','o.oid=u.oid');
+        $query->innerJoin('field_data_field_plan_option_cd','p','p.entity_id=u.nid');
+        
+        $query->addField('u','nid', 'plan_option_id');
+        $query->addField('u','planOptionCd', 'productid');
+        $query->addField('p','field_plan_option_cd_value', 'plan_option_cd');
+        $query->addField('u','oid', 'option_id');
+        $query->fields('o',array('name','launchDt','longName','planId','productFamilyId','productId','productStatusCd','productVersion','shortName','versionName','withdrawDt','description','icon_name'))
+            ->condition('u.nid',$plan_option_id);
+                   
+    }
+            
+    $results=$query->execute()->fetchAll();
+    
+    // dpr($results);exit;    
+     if(!empty($results)){
+        return $results;
+    }else{
+        return 0;
+    }   
+}
+/**
+ * 
+ * Function for fetching policy terms related to plan id
+ * @param
+ * $id -- Plan id
+ * @return
+ * Policy term values  associated to plan id i.e 1/2/3 years 
+ * 
+ */
+function parent_plan_policy_term($id){
+    
+            $result=db_select('field_data_field_plan_policy_term ','t')
+                    ->fields('t',array('field_plan_policy_term_value'))
+                    ->condition('t.entity_id',$id)
+                    ->execute()->fetchAll();
+                    
+            if(!empty($result)){
+                return $result;
+            }else{
+                return 0;
+            }
+}
+/**
+ * Function for Fetching addons related to initial_quote_no
+ * @return
+ * Quote AddOns Array
+ * @param
+ * initial_quote_no
+ * 
+ */
+function quote_addon_details($qid=NULL){
+    
+            $result=db_select("quote_addons",'a')
+                    ->fields('a')
+                    ->condition('a.qid',$qid)
+                    ->execute()->fetchAll();
+                    
+            if($result){
+                return $result;
+                
+            }else{
+                return 0;
+            }  
+    
+}
+ /**
+ * Function for Fetching Rider related to initial_quote_no
+ * @return
+ * Quote Riders Array
+ * @param
+ * initial_quote_no
+ * 
+ */
+function quote_ridder_details($qid=NULL){
+    
+    
+            $result=db_select("quote_ridders",'a')
+                    ->fields('a')
+                    ->condition('a.qid',$qid)
+                    ->execute()->fetchAll();
+            if($result){
+                return $result;
+                
+            }else{
+                return 0;
+            }  
+    
+ }
+ /**
+ * Function for Fetching Rider related to initial_quote_no
+ * @return
+ * Quote Riders Array
+ * @param
+ * initial_quote_no
+ * 
+ */
+ function quote_charge_details($qid=NULL){
+    
+    
+            $result=db_select("quotationchargedolist",'a')
+                    ->fields('a')
+                    ->condition('a.qid',$qid)
+                    ->execute()->fetchAll();
+            if($result){
+                return $result;
+                
+            }else{
+                return 0;
+            }  
+    
+ }
+ 
+ /**
+ * Function for Fetching Policy Pdf related data.
+ * @return
+ * Policy Related Data for generating policy pdf  for document locker
+ * @param
+ * $pid - Policy ID
+ * $uid - User uid
+ * 
+ */
+ 
+function policy_details($pid=NULL,$uid=NULL){
+    
+    
+    if($pid && $uid){
+               
+        $query=db_select('applications','a');
+        $query->innerJoin('get_quote','q','q.qid=a.quote_id');
+        $query->fields('a');
+        $query->fields('q')
+                ->condition('a.policy_no',$pid)
+                ->condition('a.user_id',$uid);
+       
+       $result['application']=$query->execute()->fetchAssoc();   
+       
+       $query_sec=db_select('applications','a');
+       $query_sec->innerJoin('insured_data','d','d.application_id=a.app_id');
+       $query_sec->fields('d')
+                ->condition('a.policy_no',$pid)
+                ->condition('a.user_id',$uid);
+                
+       $result['insured']=$query_sec->execute()->fetchAll();
+             
+        //dpr($result);exit;
+        if(!empty($result)){
+            
+            return $result;
+        }else{
+            return 0;
+        }
+    }
+    
+}
+function addon_count($qid=NULL){
+    
+    if($qid){
+        
+            $result=db_select('quote_stored_addon','a')
+                    ->fields('a')
+                    ->condition('a.qid',$qid)
+                    ->execute();
+                    
+            $count=$result->rowCount();       
+        
+            if(!empty($count)){
+                return $count;
+            }else{
+                return 0;
+            }
+            //dpr($count);exit;
+    }else{
+        
+        return 0;
+    }
+    
+}
+/**
+ * Get string into two parts.
+ */
+function _plan_split_string($string,$noOfCharacters){
+    
+    $string=strip_tags($string);
+    $data = array();
+    $str1 = substr($string,0,$noOfCharacters);
+    $str2 = substr($string, $noOfCharacters);
+    return $data = array($str1,$str2);
+ }
+function addon_premium($oid,$qid){
+    
+    //dpr($qid);
+    $query=db_select('quote_addons','q')
+            ->fields('q')
+            ->condition('q.qid',$qid)
+            ->condition('q.productId',$oid)
+            ->execute()->fetchAssoc();
+            
+            if($query){
+                return $query;
+            }else{
+                return 0;
+            }
+}
+
+function received_form($qid)
+{     
+    global $user;
+    
+    if($user->uid==0){
+        
+        if(isset($_SESSION['guestuser'])){
+        
+            $guestuser=$_SESSION['guestuser'];
+         }
+    }else{
+        $guestuser=$user;
+    }
+     
+    $query=db_select('applications','a');
+    $query->innerJoin('get_quote','q','q.qid=a.quote_id');
+    $query->innerJoin('payment_details','m','a.app_id=m.application_id');
+    $query->fields('a', array('title','fname','mname','lname','policy_no'));
+    $query->fields('m', array('transaction_date'));
+    $query->fields('q', array('finalpremium','basepremium'))
+            ->condition('a.quote_id',$qid)
+            ->condition('a.user_id',$guestuser->uid);
+            
+    $result = $query->execute()->fetchAssoc();
+
+    return $result;                      
+}
+
+function proposal_form($qid)
+{     
+    global $user;
+    
+    if($user->uid==0){
+        
+        if(isset($_SESSION['guestuser'])){
+        
+            $guestuser=$_SESSION['guestuser'];
+         }
+    }else{
+        $guestuser=$user;
+    }
+    
+    
+//    $query = "select * from application a inner join get_quote q on a.quote_id=q.qid where a.quote_id=".$qid;
+    //$query = "select * from application quote_id=".$qid;
+        
+    $query=db_select('applications','a');
+    $query->innerJoin('get_quote','q','q.qid=a.quote_id');
+//    $query->innerJoin('insured_data','i','a.app_id=i.application_id');
+    $query->innerJoin('payment_details','m','a.app_id=m.application_id');
+    $query->innerJoin('cities','c','q.city_id=c.cid');
+    
+    $query->fields('a');
+    $query->fields('q',array('city_id','finalpremium','tenure','parentProductId','policyType','basepremium'));
+    $query->fields('m', array('transaction_date'));
+//    $query->fields('i', array('first_name','middle_name','last_name','gender','dob','relationship','height','weight','occupation','city','pincode','sum_insured_value'));
+    $query->fields('c', array('zone'))
+            ->condition('a.quote_id',$qid)
+            ->condition('a.user_id',$guestuser->uid);
+    
+    $result = $query->execute()->fetchAssoc();
+
+    return $result;                      
+}
+
+/**
+ * 
+ * Function retrieves key features related to plan
+ * 
+ */
+function plan_images($nid=NULL,$attrib_label){
+    
+    if($nid && $attrib_label){
+        
+        $query=db_select('uc_product_attributes','a')
+                ->fields('a',array('aid'))
+                ->condition('a.label',$attrib_label)
+                ->execute()->fetchField();
+        
+                if($query){
+                    
+                    $attributes_options = db_query('SELECT uc_product_options.*,uc_attribute_options.name, FROM uc_product_options 
+                                        INNER JOIN uc_attribute_options ON uc_attribute_options.oid = uc_product_options.oid WHERE nid ='.$nid.' AND aid = '.$query.' group by uc_attribute_options.oid ');
+                       
+                }
+                
+        if($attributes_options){
+            
+            return $attributes_options;
+            
+        }else{
+            
+            return false;
+        }
+        //dpr($result);exit;
+    }
+}
+
+function quote_people_details($qid=NULL){
+    
+    
+    if($qid){
+        
+        $result=db_select('get_quote_people_details','p')
+                ->fields('p')
+                ->condition('p.quote_id',$qid)
+                ->execute()->fetchAll();
+        
+        if($result){
+            
+            return $result;
+        }else{
+            return 0;
+        }
+        
+    }
+}
+
+function _plan_relation_value($type=NULL,$key=NULL){
+    
+    $relation='';
+    if(strtolower($type)=='adult'){
+        
+        switch($key){
+            
+            case 1:
+                $relation='SELF';break;
+            case 2:
+                $relation='WIFE';break;
+            case 3:
+                $relation='FATHER';break;
+            case 4:
+                $relation='MOTHER';break;
+            case 5:
+                $relation='BROTHER';break;
+        }
+    }else if(strtolower($type)=='child'){
+        
+         switch($key){
+            
+            case 1:
+            case 3:
+            case 5:
+                $relation='SON'; break;
+            case 2:
+            case 4:
+                $relation='DAUGHTER'; break;
+                        
+        }   
+    }
+    if($relation){
+        
+        return $relation;
+    }else{
+        return 0;
+    }   
+}
+
+function _plan_consumption($type,$consumption=NULL){
+    
+    if(strtolower($type)=='tobacco'){
+        
+        
+        switch($consumption){
+            
+                case 1:
+                    $value='LESS20';break; 
+                case 2:
+                    $value='MORE20';break;
+        }
+        
+    }else if(strtolower($type)=='alcohol'){
+        
+        switch($consumption){
+            
+            case 1:
+                $value='LESS60';break; 
+            case 2:
+                $value='MORE60';break;
+            
+        }
+        
+    }else if(strtolower($type)=='cigarette'){
+        
+        switch($consumption){
+            
+            case 1:
+                $value='LESS5';break; 
+            case 2:
+                $value='MORE5';break;
+        }
+    } 
+    if($value){
+        return $value;
+    }else{
+        return 0;
+    }
+}
+function _plan_compute_value($sum_value,$type){
+    
+    if($sum_value && $type){
+        
+         $query=db_select('field_data_field_si_value','v');
+         $query->innerJoin("field_data_field_plan_option_cd",'p','p.entity_id=v.entity_id');
+         $query->innerJoin("field_data_field_plan_option_cover_type",'c','c.entity_id=p.entity_id');
+         $query->innerJoin("field_data_field_sub_plan_option",'s','s.field_sub_plan_option_target_id=c.entity_id');
+         $query->innerJoin('field_data_field_sub_plan_id','sub_plan','sub_plan.entity_id=s.entity_id');
+         $query->innerJoin('field_data_field_sub_plan_parent_product_id','parentproductId','parentproductId.entity_id=s.entity_id');
+         
+         $query->innerJoin('node','n','n.nid=s.entity_id');
+         $query->innerJoin('mappingto','mt','mt.entity_id=s.entity_id');
+         
+         
+         $query->innerJoin('field_data_field_related_plan_id','parent_plan','parent_plan.entity_id=sub_plan.entity_id');
+         $query->innerJoin('field_data_field_plan_id ','parent_plan_value','parent_plan_value.entity_id=parent_plan.field_related_plan_id_target_id');
+         $query->innerJoin('field_data_field_version ','version','version.entity_id=parent_plan.entity_id');
+         
+         
+         $query->innerJoin('node','np','np.nid=parent_plan_value.entity_id');
+         
+         $query->innerJoin('field_data_taxonomy_catalog  ','t','t.entity_id=parent_plan_value.entity_id');
+         $query->innerJoin('taxonomy_term_data','term_name','term_name.tid=t.taxonomy_catalog_tid');
+                
+         $query->addField('t','taxonomy_catalog_tid', 'tax_term_internal_id');
+         $query->addField('term_name','name', 'tax_term_name');
+         $query->addField('parent_plan','field_related_plan_id_target_id', 'sub_plan_parent_internal_id');
+         $query->addField('parent_plan_value','field_plan_id_value', 'sub_plan_parent_value');
+         $query->addField('parent_plan_value','entity_id', 'plan_id');
+         
+         
+         $query->addField('s','entity_id', 'sub_plan_internal_id');
+         $query->addField('sub_plan','field_sub_plan_id_value', 'sub_plan_id');
+         $query->addField('p','entity_id', 'plan_option_internal_id');
+         $query->fields('p',array('field_plan_option_cd_value'))
+                ->fields('c',array('field_plan_option_cover_type_value'))
+                ->fields('parentproductId',array('field_sub_plan_parent_product_id_value'))
+                ->fields('version',array('field_version_value'))
+                ->fields('mt')
+                ->condition('v.field_si_value_value',$sum_value)    
+                ->condition('c.field_plan_option_cover_type_value',$type,'LIKE')
+                ->condition('mt.effectiveFromDt',date('Y-m-d'),'<=');
+          
+          $to_date=db_select('mappingto','m')
+                    ->fields('m',array('effectiveToDt'))
+                    //->condition('productId',)
+                    ->execute()->fetchField();
+                    
+          if(!empty($to_date)){
+            
+          //  $query->condition('mt.effectiveToDt',date('Y-m-d'),'>=');
+          }               
+          $query->condition('n.status',1)
+                ->condition('np.status',1);
+                
+        $results=$query->execute()->fetchAll();
+    }
+    if($results){
+        return $results;
+    }else{
+        return 0;
+    }
+}
+
+
+function _plan_ws_short_name($planid=NULL){
+    
+    $result='';
+    if($planid){
+        
+        $result=db_select('field_data_field_ws_plan_short_name','ws')
+            ->fields('ws',array('field_ws_plan_short_name_value'))
+            ->condition('ws.entity_id',$planid)
+            ->execute()->fetchField();    
+    }
+    
+     if($result){
+        return $result;
+     }else{
+        return $result;
+     }      
+    
+}
+
+function _plan_insured_total_premium($init_quote_no,$appid,$from=NULL){
+    
+    $quote_result=quote_details_by_id($init_quote_no);
+    
+    //$quote_result=quote_details($init_quote_no);
+    
+    $location=location_details($quote_result['city_id']);
+    
+    if(!empty($location)){
+        
+            $location_value=$location['city_name'];
+            $zone_value=strtoupper($location['zone']);
+    }
+    
+    
+  //  $results=_plan_compute_value($sum_value,$family_type);
+    
+ //   dpr($results);exit;
+    /*
+    if(!empty($results)){
+        
+        foreach($results as $result){
+            
+            $productId=!empty($result->sub_plan_id) ? $result->sub_plan_id : '';
+            $productPlanOptionCd=!empty($result->field_plan_option_cd_value) ? $result->field_plan_option_cd_value : '';
+            $policyType=!empty($result->field_plan_option_cover_type_value) ? $result->field_plan_option_cover_type_value : '';
+            
+            //$parentProductId=!empty($result->sub_plan_parent_value) ? $result->sub_plan_parent_value : '';
+            $parentProductId=!empty($result->field_sub_plan_parent_product_id_value) ? $result->field_sub_plan_parent_product_id_value : '';
+            $parentId=!empty($result->plan_id) ? $result->plan_id : '';
+            
+            $productFamilyId=!empty($result->tax_term_name) ? $result->tax_term_name : '';
+            $parentProductVersion=!empty($result->field_version_value) ? $result->field_version_value : '';
+            
+            $agencyId=!empty($result->agencyId) ? $result->agencyId : '';
+            $channelId=!empty($result->channelId) ? $result->channelId : '';
+            $agentId=!empty($result->agentId) ? $result->agentId : '';
+            $campainId=!empty($result->campainId) ? $result->campainId : '';   
+            
+            if($parentId){
+                
+                
+                $terms=db_select('field_data_field_plan_policy_term','p')
+                        ->fields('p',array('field_plan_policy_term_value'))
+                        ->condition('p.entity_id',$parentId)
+                        ->orderBy('field_plan_policy_term_value','ASC')
+                        ->execute()->fetchField();
+                if($terms){
+                    $term_value=$terms;
+                }        
+            }
+        }
+    }*/
+    
+    $people_details=db_select('insured_data','i')
+                    ->fields('i')
+                    ->condition('i.application_id',$appid)
+                    ->execute();
+    
+    foreach($people_details as $key=>$people_detail){
+        
+        $people_detail=(array)$people_detail;
+        
+                 if(!empty($people_detail['tobacco'])){
+                    
+                    $tobacco=_plan_consumption('tobacco',$people_detail['tobacco_consumption']);
+                }else{
+                    $tobacco='NO';    
+                }
+                
+                if(!empty($people_detail['alcohol'])){
+                    
+                    $alcohol=_plan_consumption('alcohol',$people_detail['alcohol_consumption']);
+                }else{
+                    $alcohol='NO';   
+                }
+                
+                if(!empty($people_detail['cigarette'])){
+                    
+                    $cigarette=_plan_consumption('cigarette',$people_detail['cigarette_consumption']);
+                }else{
+                    $cigarette='NO';    
+                }
+                $gender=empty($people_detail['gender'])  ?  'MALE' : 'FEMALE';
+                $insuredDob=date('d/m/Y',$people_detail['dob']);
+                
+         $people_data[$key]=array(
+                                    
+                'chewTobaccoCd'=>$tobacco,
+			    'cityCd'=>!empty($location_value) ? $location_value : '',
+                'consumeAlcoholCd'=>$alcohol,
+                'discount'=>'',
+				'dob'=>!empty($insuredDob) ? $insuredDob : '',
+                'emailAddress'=>'',
+                'extraPremium'=>'',
+				'genderCd'=>$gender,
+				'insuredTypeCd'=>'PRIMARY',
+                'issueAge'=>'',
+                'mobileNum'=>'',
+                'modalPremium'=>'',
+				'relationCd'=>$people_detail['relationship'],
+                'quotationProductInsuredBenefitDOList'=>array(
+                    'amount'=>'',
+                    'benefitId'=>'',
+                    'benefitTypeCd'=>'',
+                    'productId'=>'',
+                ),
+                'smokerStatusCd'=>$cigarette,
+                'zoneCd'=>!empty($zone_value) ? $zone_value : 'ZONE1',
+        ); 
+        
+    }
+    $mapping=db_select('mappingto','m')
+            ->fields('m')
+            ->condition('m.productId',$quote_result['productId'])
+            ->execute()->fetchAssoc();
+            
+    if($mapping){
+        
+        $agentId=$mapping['agentId'];
+        $agencyId=$mapping['agencyId'];
+        $campainId=$mapping['campainId'];
+        $channelId=$mapping['channelId'];
+    }
+    
+    //dpr($people_data);
+   $type='FINAL';
+   if($from){
+        $save='YES';
+    }else{
+        $save='NO';
+   }
+   $quote_details=array(
+        'WSQuotationListIO'=>array(
+            'listofquotationTO'=>array(
+                'quotationProductDOList'=>array(
+                    'basePremium'=>'',
+                    'discount'=>'',
+                    'extraPremium'=>'',
+                    'productId'=>$quote_result['productId'],
+					'productPlanOptionCd'=>$quote_result['productPlanOptionCd'],
+					'productTypeCd'=>'SUBPLAN',
+                    'productVersion'=>1,
+					'sumInsured'=>$quote_result['sum_insured'],
+                    'zoneCd'=>'',
+                    'quotationProductInsuredDOList'=>$people_data,
+                    
+                    'quotationProductAddOnDOList'=>array(
+                    
+                        'basePremium'=>'',
+                        'discount'=>'',
+                        'extraPremium'=>'',
+						'productId'=>'',
+						'productPlanOptionCd'=>'',
+                        'sumInsured'=>'',
+                    ),
+                    'quotationProductBenefitDOList'=>array(
+                        'amount'=>'',
+                        'benefitId'=>'',
+                        'benefitTypeCd'=>'',
+                        'productId'=>'',
+                    ),
+                    'quotationProductChargeDOList'=>array(
+                        'chargeAmount'=>'',
+                        'chargeClassCd'=>'',
+                        'chargePercentage'=>'',
+                    ),
+                ),
+                'agentId'=>$agentId,
+                'agencyId'=>$agencyId,
+                'campaignCd'=>$campainId,
+				'channelId'=>$channelId,
+				'noOfAdults'=>$quote_result['no_adults'],
+				'noOfKids'=>$quote_result['no_childs'],
+				'parentProductId'=>$quote_result['parentProductId'],
+                'parentProductVersion'=>$quote_result['parentProductVersion'],
+                'policyType'=>$quote_result['policyType'],
+                'productFamilyId'=>$quote_result['productFamilyId'],
+                'productId'=>$quote_result['productId'],
+                'productPlanOptionCd'=>$quote_result['productPlanOptionCd'],
+                'quotationDt'=>$quote_result['quotationDt'], 			
+				'quoteTypeCd'=>$type,
+				'saveFl'=>$save,
+				'tenure'=>$quote_result['tenure'],
+            )
+        )
+    );
+       
+    return $quote_details;            
+}
+function plans_node_view($node, $view_mode, $langcode) {
+  if($node->type == 'plan'){
+    $node_title = _plan_ws_short_name($node->nid);
+    $node->title =$node_title;
+  }
+} 
+
+function array_unique_field($arr){
+    
+ $out = array();
+foreach ($arr as $row) {
+    $out[$row->field_si_value_value] = $row;
+}
+
+return $out; 
+    
+}
+
+function initial_quote_details($initial_quote_no,$planid){
+    
+    
+    $quote_data=db_select('get_quote','q')
+            ->fields('q')
+            ->condition('initial_quote_no',$initial_quote_no)
+            ->condition('planid',$planid)
+            ->execute()->fetchAssoc();
+    
+    if($quote_data){
+        return $quote_data;
+    }else{
+        return 0;
+    }
+}
+
+function _plan_change_tenure($sumInsured,$qid,$planid,$tenure){
+    
+    global $product_conf;
+    $result=initial_quote_details($qid,$planid);
+          
+    if($result){
+        
+        $location=location_details($result['city_id']);
+                    if(!empty($location)){
+                        $location_value=$location['city_name'];
+                        $zone_value=strtoupper($location['zone']);
+                    }
+                    $people_details=quote_people_details($result['qid']);
+                    
+                    if(!empty($people_details)){
+                        
+                        foreach($people_details as $key=>$people_detail){
+                                       
+                           $gender=empty($people_detail->gender)  ?  'MALE' : 'FEMALE';
+                                  
+                            if(!empty($people_detail->tobacco)){
+                    
+                                $tobacco=_plan_consumption('tobacco',$people_detail->tobacco_consumption);
+                            }else{
+                                $tobacco='NO';    
+                            }
+                        
+                            if(!empty($people_detail->alcohol)){
+                    
+                                $alcohol=_plan_consumption('alcohol',$people_detail->alcohol_consumption);
+                            }else{
+                                $alcohol='NO';   
+                            }
+                            if(!empty($people_detail->cigarette)){
+                                
+                                $cigarette=_plan_consumption('cigarette',$people_detail->cigarette_consumption);
+                            }else{
+                                $cigarette='NO';    
+                            }
+                              $relation=_plan_relation_value($people_detail->people_type,$people_detail->ordering);    
+                              $insuredDob=date('d/m/Y',$people_detail->dob);
+                              
+                                $people_data[$key]=array(
+                                    
+                                        'chewTobaccoCd'=>$tobacco,
+                						'cityCd'=>!empty($location_value) ? $location_value : '',
+                                        'consumeAlcoholCd'=>$alcohol,
+                                        'discount'=>'',
+                						'dob'=>!empty($insuredDob) ? $insuredDob : '',
+                                        'emailAddress'=>!empty($result['email_id']) ? $result['email_id'] : '',
+                                        'extraPremium'=>'',
+                						'genderCd'=>$gender,
+                						'insuredTypeCd'=>'PRIMARY',
+                                        'issueAge'=>'',
+                                        'mobileNum'=>!empty($values['phone_val']) ? $values['phone_val'] : '',
+                                        'modalPremium'=>'',
+                						'relationCd'=>isset($relation) && !empty($relation) ? $relation : '',
+                                        'quotationProductInsuredBenefitDOList'=>array(
+                                            'amount'=>'',
+                                            'benefitId'=>'',
+                                            'benefitTypeCd'=>'',
+                                            'productId'=>'',
+                                        ),
+                                        'smokerStatusCd'=>$cigarette,
+                                        'zoneCd'=>!empty($zone_value) ? $zone_value : 'ZONE1',
+                                );
+                           }
+                    }
+                    $quote_details=array(
+                        'WSQuotationListIO'=>array(
+                            'listofquotationTO'=>array(
+                                'quotationProductDOList'=>array(
+                                    'basePremium'=>'',
+                                    'discount'=>'',
+                                    'extraPremium'=>'',
+                                    'productId'=>$result['productId'],
+                					'productPlanOptionCd'=>$result['productPlanOptionCd'],
+                					'productTypeCd'=>'SUBPLAN',
+                                    'productVersion'=>1,
+                					'sumInsured'=>$result['sum_insured'],
+                                    'zoneCd'=>'',
+                                    'quotationProductInsuredDOList'=>$people_data,
+                                    
+                                    'quotationProductAddOnDOList'=>$add,
+                                    'quotationProductBenefitDOList'=>array(
+                                        'amount'=>'',
+                                        'benefitId'=>'',
+                                        'benefitTypeCd'=>'',
+                                        'productId'=>'',
+                                    ),
+                                    'quotationProductChargeDOList'=>array(
+                                        'chargeAmount'=>'',
+                                        'chargeClassCd'=>'',
+                                        'chargePercentage'=>'',
+                                    ),
+                                ),
+                                'agentId'=>$result['agentId'],
+                                'campaignCd'=>$result['campaignCd'],
+                				'channelId'=>$result['channelId'],
+                				'noOfAdults'=>$result['no_adults'],
+                				'noOfKids'=>$result['no_childs'],
+                				'parentProductId'=>$result['parentProductId'],
+                                'parentProductVersion'=>$result['parentProductVersion'],
+                                'policyType'=>$result['policyType'],
+                                'productFamilyId'=>$result['productFamilyId'],
+                                'productId'=>$result['productId'],
+                                'productPlanOptionCd'=>$result['productPlanOptionCd'],
+                                'quotationDt'=>$result['quotationDt'],
+                                'quoteTypeCd'=>'FINAL',
+                				'saveFl'=>'No',
+                				'tenure'=>$tenure,
+                            )
+                        )
+                    );
+                  
+                    try{
+                        $response_service = $product_conf->getQuote('compute',$quote_details);
+                     }catch(Exception $e){
+                        return 'Service Not available';
+                    }
+                    
+                    /*
+                     echo '<pre>';
+                   print_r($response_service);exit;*/  
+                    
+                   if($response_service){
+                    
+                        if($response_service->return->listofquotationTO->totPremium){
+                            
+                            db_update('get_quote')
+                                ->fields(array(
+                                    'tenure'=>$tenure,
+                                    'total_premium'=>$response_service->return->listofquotationTO->totPremium,
+                                ))
+                                ->condition('qid',$result['qid'])
+                                ->condition('planid',$planid)
+                                ->execute();
+                        }
+                        return round($response_service->return->listofquotationTO->totPremium);
+                   }else{
+                        return 0;
+                   }
+                   
+        }else{
+            return 0;
+        }        
+}
+
+function _plan_change_suminsured($sumInsured,$qid,$planid,$option_cd){
+    
+    //dpr($option_cd);exit;
+    global $product_conf;
+    
+    $stored_quote_details=initial_quote_details($qid,$planid);
+    
+    //dpr($stored_quote_details);exit;
+    
+    if(!empty($stored_quote_details)){
+            
+            $location=location_details($stored_quote_details['city_id']);
+            if(!empty($location)){
+                
+                $location_value=$location['city_name'];
+                $zone_value=strtoupper($location['zone']);
+            }
+            $insuredDob=date('j/m/Y',$stored_quote_details['dob']);
+            $gender=!empty($stored_quote_details['gender']) ? 'FEMALE' : 'MALE';
+            $adults=$stored_quote_details['no_adults'];
+            $childs=$stored_quote_details['no_childs']; 
+            $type=$stored_quote_details['quoteTypeCd'];          
+    }
+    if(($adults + $childs)==1){
+            $type=strtoupper('INDIVIDUAL');
+    }else{
+            $type=strtoupper('FAMILYFLOATER');
+    }
+    
+    
+    
+    if($sumInsured && $type && $option_cd){
+        
+         $query=db_select('field_data_field_si_value','v');
+         $query->innerJoin("field_data_field_plan_option_cd",'p','p.entity_id=v.entity_id');
+         $query->innerJoin("field_data_field_plan_option_cover_type",'c','c.entity_id=p.entity_id');
+         $query->innerJoin("field_data_field_sub_plan_option",'s','s.field_sub_plan_option_target_id=c.entity_id');
+         $query->innerJoin('field_data_field_sub_plan_id','sub_plan','sub_plan.entity_id=s.entity_id');
+         $query->innerJoin('field_data_field_sub_plan_parent_product_id','parentproductId','parentproductId.entity_id=s.entity_id');
+         
+         $query->innerJoin('node','n','n.nid=s.entity_id');
+         $query->innerJoin('mappingto','mt','mt.entity_id=s.entity_id');
+         
+         
+         $query->innerJoin('field_data_field_related_plan_id','parent_plan','parent_plan.entity_id=sub_plan.entity_id');
+         $query->innerJoin('field_data_field_plan_id ','parent_plan_value','parent_plan_value.entity_id=parent_plan.field_related_plan_id_target_id');
+         $query->innerJoin('field_data_field_version ','version','version.entity_id=parent_plan.entity_id');
+         
+         
+         $query->innerJoin('node','np','np.nid=parent_plan_value.entity_id');
+         
+         $query->innerJoin('field_data_taxonomy_catalog  ','t','t.entity_id=parent_plan_value.entity_id');
+         $query->innerJoin('taxonomy_term_data','term_name','term_name.tid=t.taxonomy_catalog_tid');
+                
+         $query->addField('t','taxonomy_catalog_tid', 'tax_term_internal_id');
+         $query->addField('term_name','name', 'tax_term_name');
+         $query->addField('parent_plan','field_related_plan_id_target_id', 'sub_plan_parent_internal_id');
+         $query->addField('parent_plan_value','field_plan_id_value', 'sub_plan_parent_value');
+         $query->addField('parent_plan_value','entity_id', 'plan_id');
+         
+         
+         $query->addField('s','entity_id', 'sub_plan_internal_id');
+         $query->addField('sub_plan','field_sub_plan_id_value', 'sub_plan_id');
+         $query->addField('p','entity_id', 'plan_option_internal_id');
+         $query->fields('p',array('field_plan_option_cd_value'))
+                ->fields('c',array('field_plan_option_cover_type_value'))
+                ->fields('parentproductId',array('field_sub_plan_parent_product_id_value'))
+                ->fields('version',array('field_version_value'))
+                ->fields('mt')
+                ->condition('v.field_si_value_value',$sumInsured)    
+                //->condition('p.field_plan_option_cd_value',$planoptioncd)
+                ->condition('s.entity_id',$option_cd)
+                ->condition('c.field_plan_option_cover_type_value',$type,'LIKE')
+                ->condition('mt.effectiveFromDt',date('Y-m-d'),'<=');
+          
+          $to_date=db_select('mappingto','m')
+                    ->fields('m',array('effectiveToDt'))
+                    //->condition('productId',)
+                    ->execute()->fetchField();
+                    
+          if(!empty($to_date)){
+            
+          //  $query->condition('mt.effectiveToDt',date('Y-m-d'),'>=');
+          }               
+          $query->condition('n.status',1)
+                ->condition('np.status',1);
+                      
+          $results=$query->execute()->fetchAll();
+          
+          //echo '<pre>';print_r($results);exit;
+          
+    }
+    if(!empty($results)){
+        
+        foreach($results as $result){
+            
+            $productId=!empty($result->sub_plan_id) ? $result->sub_plan_id : '';
+            $productPlanOptionCd=!empty($result->field_plan_option_cd_value) ? $result->field_plan_option_cd_value : '';
+            $policyType=!empty($result->field_plan_option_cover_type_value) ? $result->field_plan_option_cover_type_value : '';
+            
+            //$parentProductId=!empty($result->sub_plan_parent_value) ? $result->sub_plan_parent_value : '';
+            $parentProductId=!empty($result->field_sub_plan_parent_product_id_value) ? $result->field_sub_plan_parent_product_id_value : '';
+            $parentId=!empty($result->plan_id) ? $result->plan_id : '';
+            
+            $productFamilyId=!empty($result->tax_term_name) ? $result->tax_term_name : '';
+            $parentProductVersion=!empty($result->field_version_value) ? $result->field_version_value : '';
+            
+            $agencyId=!empty($result->agencyId) ? $result->agencyId : '';
+            $channelId=!empty($result->channelId) ? $result->channelId : '';
+            $agentId=!empty($result->agentId) ? $result->agentId : '';
+            $campainId=!empty($result->campainId) ? $result->campainId : '';   
+           
+        }
+    }
+    
+    $mapping=db_select('mappingto','m')
+            ->fields('m')
+            ->condition('m.productId',$stored_quote_details['productId'])
+            ->execute()->fetchAssoc();
+               
+    if($mapping){
+        
+        $agentId=$mapping['agentId'];
+        $agencyId=$mapping['agencyId'];
+        $campainId=$mapping['campainId'];
+        $channelId=$mapping['channelId'];
+    }
+    $people_details=quote_people_details($stored_quote_details['qid']);
+                    
+                    if(!empty($people_details)){
+                        
+                        foreach($people_details as $key=>$people_detail){
+                                       
+                           $gender=empty($people_detail->gender)  ?  'MALE' : 'FEMALE';
+                                  
+                            if(!empty($people_detail->tobacco)){
+                    
+                                $tobacco=_plan_consumption('tobacco',$people_detail->tobacco_consumption);
+                            }else{
+                                $tobacco='NO';    
+                            }
+                        
+                            if(!empty($people_detail->alcohol)){
+                    
+                                $alcohol=_plan_consumption('alcohol',$people_detail->alcohol_consumption);
+                            }else{
+                                $alcohol='NO';   
+                            }
+                            if(!empty($people_detail->cigarette)){
+                                
+                                $cigarette=_plan_consumption('cigarette',$people_detail->cigarette_consumption);
+                            }else{
+                                $cigarette='NO';    
+                            }
+                              $relation=_plan_relation_value($people_detail->people_type,$people_detail->ordering);    
+                                $people_data[$key]=array(
+                                    
+                                        'chewTobaccoCd'=>$tobacco,
+                						'cityCd'=>!empty($location_value) ? $location_value : '',
+                                        'consumeAlcoholCd'=>$alcohol,
+                                        'discount'=>'',
+                						'dob'=>!empty($insuredDob) ? $insuredDob : '',
+                                        'emailAddress'=>'',
+                                        'extraPremium'=>'',
+                						'genderCd'=>$gender,
+                						'insuredTypeCd'=>'PRIMARY',
+                                        'issueAge'=>'',
+                                        'mobileNum'=>'',
+                                        'modalPremium'=>'',
+                						'relationCd'=>isset($relation) && !empty($relation) ? $relation : '',
+                                        'quotationProductInsuredBenefitDOList'=>array(
+                                            'amount'=>'',
+                                            'benefitId'=>'',
+                                            'benefitTypeCd'=>'',
+                                            'productId'=>'',
+                                        ),
+                                        'smokerStatusCd'=>$cigarette,
+                                        'zoneCd'=>!empty($zone_value) ? $zone_value : 'ZONE1',
+                                );
+                           }
+                    } 
+                    
+    $quote_details=array(
+        'WSQuotationListIO'=>array(
+            'listofquotationTO'=>array(
+                'quotationProductDOList'=>array(
+                    'basePremium'=>'',
+                    'discount'=>'',
+                    'extraPremium'=>'',
+                    'productId'=>$productId,
+					'productPlanOptionCd'=>$productPlanOptionCd,
+					'productTypeCd'=>'SUBPLAN',
+                    'productVersion'=>1,
+					'sumInsured'=>$sumInsured,
+                    'zoneCd'=>'',
+                    'quotationProductInsuredDOList'=>$people_data,
+                    'quotationProductAddOnDOList'=>array(
+                    
+                        'basePremium'=>'',
+                        'discount'=>'',
+                        'extraPremium'=>'',
+						'productId'=>'',
+						'productPlanOptionCd'=>'',
+                        'sumInsured'=>'',
+                    ),
+                    'quotationProductBenefitDOList'=>array(
+                        'amount'=>'',
+                        'benefitId'=>'',
+                        'benefitTypeCd'=>'',
+                        'productId'=>'',
+                    ),
+                    'quotationProductChargeDOList'=>array(
+                        'chargeAmount'=>'',
+                        'chargeClassCd'=>'',
+                        'chargePercentage'=>'',
+                    ),
+                ),
+                'agentId'=>$agentId,
+                'campaignCd'=>$campainId,
+				'channelId'=>$channelId,
+                'agencyId'=>$agencyId,
+				'noOfAdults'=>$adults,
+				'noOfKids'=>$childs,
+				'parentProductId'=>$parentProductId,
+                'parentProductVersion'=>$parentProductVersion,
+                'policyType'=>$policyType,
+                'productFamilyId'=>$productFamilyId,
+                'productId'=>$productId,
+                'productPlanOptionCd'=>$productPlanOptionCd,
+                'quotationDt'=>$stored_quote_details['quotationDt'], 			
+				'quoteTypeCd'=>'FINAL',
+				'saveFl'=>'No',
+				'tenure'=>$stored_quote_details['tenure'],
+            )
+        )
+    );
+    
+   // echo '<pre>';print_r($quote_details);exit;
+     try{
+        $response_service = $product_conf->getQuote('compute',$quote_details);
+     }catch(Exception $e){
+        return 'Service Not available';
+     }  
+     //echo '<pre>';print_r($response_service);exit;
+    
+    if(isset($response_service) && !empty($response_service)){
+         
+        $_SESSION['return_quote']=$response_service;
+        
+        //Updating  get_quote table and all the related tables.
+        
+        if($_SESSION['return_quote']){
+            
+               $session_response=!empty($_SESSION['return_quote']->return->listofquotationTO) ? $_SESSION['return_quote']->return->listofquotationTO : '';
+                   
+               if($response_service->return->listofquotationTO->totPremium){
+                
+                        $result=db_update('get_quote')
+                        ->fields(array(
+                            'basepremium'=>$_SESSION['return_quote']->return->listofquotationTO->quotationProductDOList->basePremium,
+                            'sum_insured'=>$sumInsured,
+                            'modify'=>time(),
+                            'total_premium'=>$_SESSION['return_quote']->return->listofquotationTO->totPremium,
+                            'agentId'=>$session_response->agentId,
+                            'campaignCd'=>$session_response->campaignCd,
+                            'channelId'=>$session_response->channelId,
+                            'parentProductId'=>$session_response->parentProductId,
+                            'parentProductVersion'=>$session_response->parentProductVersion,
+                            'policyType'=>$session_response->policyType,
+                            'productFamilyId'=>$session_response->productFamilyId,
+                            'productId'=>$session_response->productId,
+                            'productPlanOptionCd'=>$session_response->productPlanOptionCd,
+                            'quotationDt'=>$session_response->quotationDt,
+                            'quoteTypeCd'=>$session_response->quoteTypeCd,
+                            'saveFl'=>$session_response->saveFl,
+                            'tenure'=>$stored_quote_details['tenure'],
+                        ))
+                        ->condition('qid',$stored_quote_details['qid'])
+                        ->condition('planid',$stored_quote_details['planid'])
+                        ->execute();
+                        
+                if(!empty($session_response->quotationChargeDOList)){
+                    
+                    foreach($session_response->quotationChargeDOList as $charge){
+                
+                        $result= db_update('quotationchargedolist')
+                                ->fields(array(
+                                    'chargePercentage'=>$charge->chargePercentage,
+                                    'chargeClassCd'=>$charge->chargeClassCd,
+                                    'chargeAmount'=>$charge->chargeAmount,
+                                ))
+                                ->condition('qid',$stored_quote_details['qid'])
+                                ->execute();                        
+                    }  
+                }                                       
+                if(!empty($session_response->quotationProductDOList)){
+                    
+                    if(is_array($session_response->quotationProductDOList)){
+                        
+                         foreach($session_response->quotationProductDOList as $charge){
+                
+                
+                             $result= db_update('quotationproductdolist')
+                                ->fields(array(
+                                    'basePremium'=>$charge->basePremium,
+                                    'discount'=>$charge->discount,
+                                    'extraPremium'=>$charge->extraPremium,
+                                    'productId'=>$charge->productId,
+                                    'productPlanOptionCd'=>$charge->productPlanOptionCd,
+                                    'productTypeCd'=>$charge->productTypeCd,
+                                    'productVersion'=>$charge->productVersion,
+                                    'sumInsured'=>$charge->sumInsured,
+                                ))
+                                ->condition('qid',$stored_quote_details['qid'])
+                                ->execute();
+                                                        
+                         }
+                    }else if(is_object($session_response->quotationProductDOList)){
+                        
+                        $result= db_update('quotationproductdolist')
+                                ->fields(array(
+                                    
+                                    'basePremium'=>$session_response->quotationProductDOList->basePremium,
+                                    'discount'=>$session_response->quotationProductDOList->discount,
+                                    'extraPremium'=>$session_response->quotationProductDOList->extraPremium,
+                                    'productId'=>$session_response->quotationProductDOList->productId,
+                                    'productPlanOptionCd'=>$session_response->quotationProductDOList->productPlanOptionCd,
+                                    'productTypeCd'=>$session_response->quotationProductDOList->productTypeCd,
+                                    'productVersion'=>$session_response->quotationProductDOList->productVersion,
+                                    'sumInsured'=>$session_response->quotationProductDOList->sumInsured,
+                                ))
+                            ->condition('qid',$stored_quote_details['qid'])
+                            ->execute();    
+                    }
+                } 
+                if(!empty($session_response->quotationProductDOList->quotationProductAddOnDOList)){
+                    
+                        $addon_response=$session_response->quotationProductDOList->quotationProductAddOnDOList;
+                        if(is_object($addon_response) && !empty($addon_response)){
+                            
+                                db_update('quote_addons')
+                                 ->fields(array(
+                                        'basePremium'=>$addon_response->basePremium,
+                                        'discount'=>$addon_response->discount,
+                                        'extraPremium'=>$addon_response->extraPremium,
+                                        'productId'=>$addon_response->productId,
+                                        'productPlanOptionCd'=>$addon_response->productPlanOptionCd,
+                                        'sumInsured'=>$addon_response->sumInsured,
+                                 ))
+                                 ->condition('qid',$stored_quote_details['qid'])
+                                 ->execute();   
+                                
+                        }else if(is_array($addon_response) && !empty($addon_response)){
+                            
+                            
+                            foreach($addon_response as $value){
+                                
+                                db_update('quote_addons')
+                                 ->fields(array(
+                                        'basePremium'=>$value->basePremium,
+                                        'discount'=>$value->discount,
+                                        'extraPremium'=>$value->extraPremium,
+                                        'productId'=>$value->productId,
+                                        'productPlanOptionCd'=>$value->productPlanOptionCd,
+                                        'sumInsured'=>$value->sumInsured,
+                                 ))
+                                 ->condition('qid',$stored_quote_details['qid'])
+                                 ->execute();
+                            }
+                        }
+                  }
+                $total_premium=round($response_service->return->listofquotationTO->totPremium);  
+             }     
+        }
+    }else{       
+        $total_premium=0;
+    }    
+    return $total_premium;
+}
+
+/**
+ * 
+ * Function Implements Dynamic values for slider depending upon the field_data_field_si_value.
+ * @return
+ * si_values 
+ * 
+ */
+function _plan_si_values(){
+    
+    
+    $result=db_select('field_data_field_si_value','s');
+   $result->innerJoin('node','n','n.nid=s.entity_id');
+   $result->innerJoin('field_data_field_sub_plan_option','sub','s.entity_id=sub.field_sub_plan_option_target_id');   
+   $result->innerJoin('field_data_field_related_plan_id ','r','sub.entity_id=r.entity_id');
+   
+   $result->innerJoin('taxonomy_index','i','i.nid=r.field_related_plan_id_target_id');
+   $result->innerJoin('taxonomy_term_data','d','i.tid=d.tid');
+   $result->fields('s',array('field_si_value_value'))
+          ->condition('n.status',1)
+          ->condition('d.name','IPMI')
+          ->orderBy('field_si_value_value')
+          ->distinct();
+            
+    $si_values=$result->execute();
+    if($si_values){
+        return $si_values;
+        
+    }else{
+        return 0;
+    }
+}

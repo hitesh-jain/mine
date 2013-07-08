@@ -1,0 +1,28 @@
+<?php 
+
+/**
+ * Implements hook_install()
+ * 
+ */
+
+
+function site_structure_install(){
+    
+    
+    
+
+}
+
+function site_structure_update_71010(){
+    
+    $spec = array(
+    'type' => 'varchar',
+    'description' => 'Description of the options.',
+    'length' => 255,
+    'not null' => FALSE,
+  ); 
+  db_add_field( 'uc_product_options', 'description', $spec);
+    
+}
+
+
